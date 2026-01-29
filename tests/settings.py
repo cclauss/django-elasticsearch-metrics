@@ -9,6 +9,18 @@ INSTALLED_APPS = [
 ]
 MIDDLEWARE_CLASSES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3"}}
-ELASTICSEARCH_DSL = {
-    "default": {"hosts": os.environ.get("ELASTICSEARCH_HOST", "localhost:9201")}
+
+DJELME_CONNECTIONS = {
+    "6foo": {
+        "DJELMETRICS_IMP": "elasticsearch_metrics.elastic6",
+        "host": os.environ.get("ELASTICSEARCH6_HOST"),
+    },
+    "8foo": {
+        "DJELMETRICS_IMP": "elasticsearch_metrics.elastic8",
+        "host": os.environ.get("ELASTICSEARCH8_HOST"),
+    },
+    "8bar": {
+        "DJELMETRICS_IMP": "elasticsearch_metrics.elastic8",
+        "host": os.environ.get("ELASTICSEARCH8_HOST"),
+    },
 }

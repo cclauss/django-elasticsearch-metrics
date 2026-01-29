@@ -43,10 +43,10 @@ A `Metric` is a subclass of [`elasticsearch_dsl.Document`](https://elasticsearch
 ```python
 # myapp/metrics.py
 
-from elasticsearch_metrics import metrics
+from elasticsearch_metrics import elastic8
 
 
-class PageView(metrics.Metric):
+class PageView(elastic8.EventLog):
     user_id = metrics.Integer(index=True, doc_values=True)
 ```
 

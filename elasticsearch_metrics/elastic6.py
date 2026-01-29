@@ -1,3 +1,6 @@
+"""elasticsearch_metrics.elastic6: store events and reports in elasticsearch 6
+"""
+
 from collections import ChainMap
 import logging
 
