@@ -5,21 +5,22 @@ DEBUG = True
 ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     "elasticsearch_metrics.apps.ElasticsearchMetricsConfig",
-    "tests.dummyapp",
+    "tests.dummy6app",
+    "tests.dummy8app",
 ]
 MIDDLEWARE_CLASSES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3"}}
 
 DJELME_CONNECTIONS = {
-    "6foo": {
+    "elastic6foo": {
         "DJELMETRICS_IMP": "elasticsearch_metrics.elastic6",
         "host": os.environ.get("ELASTICSEARCH6_HOST"),
     },
-    "8foo": {
+    "elastic8foo": {
         "DJELMETRICS_IMP": "elasticsearch_metrics.elastic8",
         "host": os.environ.get("ELASTICSEARCH8_HOST"),
     },
-    "8bar": {
+    "elastic8bar": {
         "DJELMETRICS_IMP": "elasticsearch_metrics.elastic8",
         "host": os.environ.get("ELASTICSEARCH8_HOST"),
     },
