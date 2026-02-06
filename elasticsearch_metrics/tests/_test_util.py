@@ -3,7 +3,7 @@ from io import StringIO
 from unittest import mock
 
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.test import SimpleTestCase
 
 from elasticsearch_metrics.djelmetrics_db import get_djelmetrics_connection
@@ -24,7 +24,11 @@ def run_mgmt_command(cmd: str | BaseCommand | type[BaseCommand], *args, **option
         else cmd()
     )
     _out, _err = StringIO(), StringIO()
-    call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
+    try:
+        call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
+    except CommandError as _cmd_err:
+        return _out.getvalue(), '\n'.join((_err.getvalue(), str(_cmd_err)))
+
     return _out.getvalue(), _err.getvalue()
 
 
