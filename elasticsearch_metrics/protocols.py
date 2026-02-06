@@ -2,17 +2,18 @@ from __future__ import annotations
 import typing
 
 
-class ProtoDjelmeDatabase(typing.Protocol):
+class ProtoDjelmetricsConnection(typing.Protocol):
     def setup_db(self) -> None: ...
     def teardown_db(self) -> None: ...
     # def save_event_log(self, event_log: ProtoEventLog) -> None: ...
     # def save_report(self, report: ProtoReport) -> None: ...
     # def iter_reports(self, report_name: str) -> Iterator[ProtoReport]: ...
 
+
 @typing.runtime_checkable
-class ProtoDjelmeImp(typing.Protocol):
+class ProtoDjelmetricsImp(typing.Protocol):
     @staticmethod
-    def djelme_imp_from_config(config: dict[str, str]) -> ProtoDjelmeDatabase:
+    def djelme_imp_from_config(config: dict[str, str]) -> ProtoDjelmetricsImp:
         ...
 
 

@@ -1,24 +1,25 @@
 import factory
 
-from elasticsearch_metrics import metrics
+from elasticsearch_metrics import elastic6
 from elasticsearch_metrics.factory import MetricFactory
-from tests.dummyapp.metrics import DummyMetric
+from elasticsearch_metrics.tests._test_util import MockSaveTestCase
+from elasticsearch_metrics.tests.dummy6app.metrics import Dummy6Metric
 
 
-class DummyMetricFactory(MetricFactory):
+class MyDummyMetricFactory(MetricFactory):
     my_int = factory.Faker("pyint")
 
     class Meta:
-        model = DummyMetric
+        model = Dummy6Metric
 
 
-def test_build():
-    metric = DummyMetricFactory.build()
-    assert isinstance(metric, metrics.Metric)
-    assert isinstance(metric.my_int, int)
+class TestTestFactory(MockSaveTestCase):
+    def test_build(self):
+        metric = MyDummyMetricFactory.build()
+        assert isinstance(metric, elastic6.Metric)
+        assert isinstance(metric.my_int, int)
 
-
-def test_save(mock_save):
-    metric = DummyMetricFactory()
-    assert isinstance(metric, metrics.Metric)
-    assert mock_save.call_count == 1
+    def test_save(self):
+        metric = MyDummyMetricFactory()
+        assert isinstance(metric, elastic6.Metric)
+        assert self.mocked_es6_save.call_count == 1

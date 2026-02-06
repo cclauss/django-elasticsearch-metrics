@@ -51,8 +51,6 @@ build-backend = "poetry.core.masonry.api"
 
 [dependency-groups]
 tests = [
-    "pytest",
-    "pytest-django==4.11.1",
     "factory-boy==3.3.3",
 ]
 lint = [
@@ -81,3 +79,11 @@ optional = true
 
 [tool.poetry.group.dev]
 optional = true
+
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = 'elasticsearch_metrics.tests.*'
+allow_untyped_calls = true
+allow_untyped_defs = true

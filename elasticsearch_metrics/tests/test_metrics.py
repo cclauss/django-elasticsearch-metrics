@@ -1,8 +1,10 @@
-import mock
-import pytest
+from unittest import mock
 import datetime as dt
+
+from django.test import SimpleTestCase
 from django.utils import timezone
-from elasticsearch_metrics import metrics
+
+from elasticsearch_metrics.imps import elastic6
 from elasticsearch6_dsl import (
     IndexTemplate,
     analyzer,
@@ -14,10 +16,14 @@ from elasticsearch_metrics.exceptions import (
     IndexTemplateNotFoundError,
     IndexTemplateOutOfSyncError,
 )
-from tests.dummyapp.metrics import (
-    DummyMetric,
-    DummyMetricWithExplicitTemplateName,
-    DummyMetricWithExplicitTemplatePattern,
+from elasticsearch_metrics.tests._test_util import (
+    MockSaveTestCase,
+    RealElasticTestCase,
+)
+from elasticsearch_metrics.tests.dummy6app.metrics import (
+    Dummy6Metric,
+    Dummy6MetricWithExplicitTemplateName,
+    Dummy6MetricWithExplicitTemplatePattern,
 )
 
 
@@ -27,22 +33,22 @@ route_prefix_analyzer = analyzer(
 )
 
 
-class PreprintView(metrics.Metric):
-    provider_id = metrics.Keyword(index=True)
-    user_id = metrics.Keyword(index=True)
-    preprint_id = metrics.Keyword(index=True)
-    route_name = metrics.Text(analyzer=route_prefix_analyzer)
+class PreprintView(elastic6.Metric):
+    provider_id = elastic6.Keyword(index=True)
+    user_id = elastic6.Keyword(index=True)
+    preprint_id = elastic6.Keyword(index=True)
+    route_name = elastic6.Text(analyzer=route_prefix_analyzer)
 
     class Index:
         settings = {"refresh_interval": "-1"}
 
     class Meta:
-        app_label = "dummyapp"
+        app_label = "dummy6app"
         template_name = "osf_metrics_preprintviews"
         template = "osf_metrics_preprintviews-*"
 
 
-class TestGetIndexName:
+class TestGetIndexName(SimpleTestCase):
     def test_get_index_name(self):
         date = dt.date(2020, 2, 14)
         assert (
@@ -66,7 +72,7 @@ class TestGetIndexName:
         )
 
 
-class TestGetIndexTemplate:
+class TestGetIndexTemplate(SimpleTestCase):
     def test_get_index_template_returns_template_with_correct_name_and_pattern(self):
         template = PreprintView.get_index_template()
         assert isinstance(template, IndexTemplate)
@@ -106,33 +112,33 @@ class TestGetIndexTemplate:
 
     # regression test
     def test_mappings_are_not_shared(self):
-        template1 = DummyMetric.get_index_template()
-        template2 = DummyMetricWithExplicitTemplateName.get_index_template()
+        template1 = Dummy6Metric.get_index_template()
+        template2 = Dummy6MetricWithExplicitTemplateName.get_index_template()
         assert "my_int" in template1.to_dict()["mappings"]["doc"]["properties"]
         assert "my_keyword" not in template1.to_dict()["mappings"]["doc"]["properties"]
         assert "my_int" not in template2.to_dict()["mappings"]["doc"]["properties"]
         assert "my_keyword" in template2.to_dict()["mappings"]["doc"]["properties"]
 
     def test_declaring_metric_with_no_app_label_or_template_name_errors(self):
-        with pytest.raises(RuntimeError):
+        with self.assertRaises(RuntimeError):
 
-            class BadMetric(metrics.Metric):
+            class BadMetric(elastic6.Metric):
                 pass
 
-        with pytest.raises(RuntimeError):
+        with self.assertRaises(RuntimeError):
 
-            class MyMetric(metrics.Metric):
+            class MyMetric(elastic6.Metric):
                 class Meta:
                     template_name = "osf_metrics_preprintviews"
 
     def test_get_index_template_default_template_name(self):
-        template = DummyMetric.get_index_template()
+        template = Dummy6Metric.get_index_template()
         assert isinstance(template, IndexTemplate)
         assert template._template_name == "dummyapp_dummymetric"
         assert "dummyapp_dummymetric_*" in template.to_dict()["index_patterns"]
 
     def test_get_index_template_uses_app_label_in_class_meta(self):
-        class MyMetric(metrics.Metric):
+        class MyMetric(elastic6.Metric):
             class Meta:
                 app_label = "myapp"
 
@@ -142,7 +148,7 @@ class TestGetIndexTemplate:
     def test_template_name_defined_with_no_template_falls_back_to_default_template(
         self,
     ):
-        template = DummyMetricWithExplicitTemplateName.get_index_template()
+        template = Dummy6MetricWithExplicitTemplateName.get_index_template()
         # template name specified in class Meta
         assert template._template_name == "dummymetric"
         # template is not specified, so it's generated
@@ -152,7 +158,7 @@ class TestGetIndexTemplate:
         )
 
     def test_template_defined_with_no_template_name_falls_back_to_default_name(self):
-        template = DummyMetricWithExplicitTemplatePattern.get_index_template()
+        template = Dummy6MetricWithExplicitTemplatePattern.get_index_template()
         # template name specified in class Meta
         assert (
             template._template_name == "dummyapp_dummymetricwithexplicittemplatepattern"
@@ -161,8 +167,8 @@ class TestGetIndexTemplate:
         assert "dummymetric-*" in template.to_dict()["index_patterns"]
 
     def test_inheritance(self):
-        class MyBaseMetric(metrics.Metric):
-            user_id = metrics.Keyword(index=True)
+        class MyBaseMetric(elastic6.Metric):
+            user_id = elastic6.Keyword(index=True)
 
             class Index:
                 settings = {"number_of_shards": 2}
@@ -179,12 +185,12 @@ class TestGetIndexTemplate:
         assert template._index.to_dict()["settings"] == {"number_of_shards": 2}
 
     def test_source_may_be_enabled(self):
-        class MyMetric(metrics.Metric):
+        class MyMetric(elastic6.Metric):
             class Meta:
                 app_label = "dummyapp"
                 template_name = "mymetric"
                 template = "mymetric-*"
-                source = metrics.MetaField(enabled=True)
+                source = elastic6.MetaField(enabled=True)
 
         template = MyMetric.get_index_template()
 
@@ -193,25 +199,25 @@ class TestGetIndexTemplate:
         assert doc["_source"]["enabled"] is True
 
 
-class TestRecord:
-    def test_calls_save(self, mock_save):
+class TestRecord(MockSaveTestCase):
+    def test_calls_save(self):
         timestamp = dt.datetime(2017, 8, 21)
         p = PreprintView.record(timestamp=timestamp, provider_id="abc12")
-        assert mock_save.call_count == 1
+        assert self.mocked_es6_save.call_count == 1
         assert p.timestamp == timestamp
         assert p.provider_id == "abc12"
 
     @mock.patch.object(timezone, "now")
-    def test_defaults_timestamp_to_now(self, mock_now, mock_save):
+    def test_defaults_timestamp_to_now(self, mock_now):
         fake_now = dt.datetime(2016, 8, 21)
         mock_now.return_value = fake_now
 
         p = PreprintView.record(provider_id="abc12")
-        assert mock_save.call_count == 1
+        assert self.mock_es6_save.call_count == 1
         assert p.timestamp == fake_now
 
 
-class TestSignals:
+class TestSignals(MockSaveTestCase):
     @mock.patch.object(PreprintView, "get_index_template")
     def test_create_metric_sends_signals(self, mock_get_index_template):
         mock_pre_index_template_listener = mock.Mock()
@@ -229,7 +235,7 @@ class TestSignals:
         assert "index_template" in post_call_kwargs
         assert "using" in post_call_kwargs
 
-    def test_save_sends_signals(self, mock_save):
+    def test_save_sends_signals(self):
         mock_pre_save_listener = mock.Mock()
         mock_post_save_listener = mock.Mock()
         signals.pre_save.connect(mock_pre_save_listener, sender=PreprintView)
@@ -258,8 +264,7 @@ class TestSignals:
         assert post_save_kwargs["sender"] is PreprintView
 
 
-@pytest.mark.es
-class TestIntegration:
+class TestIntegration(RealElasticTestCase):
     def test_init(self, client):
         PreprintView.init()
         name = PreprintView.get_index_name()
@@ -283,7 +288,7 @@ class TestIntegration:
         assert document is not None
 
     def test_check_index_template(self):
-        with pytest.raises(IndexTemplateNotFoundError):
+        with self.assertRaises(IndexTemplateNotFoundError):
             assert PreprintView.check_index_template() is False
         PreprintView.sync_index_template()
         assert PreprintView.check_index_template() is True
@@ -292,7 +297,7 @@ class TestIntegration:
         PreprintView._index.settings(
             **{"refresh_interval": "1s", "number_of_shards": 1, "number_of_replicas": 2}
         )
-        with pytest.raises(IndexTemplateOutOfSyncError) as excinfo:
+        with self.assertRaises(IndexTemplateOutOfSyncError) as excinfo:
             assert PreprintView.check_index_template() is False
         error = excinfo.value
         assert error.settings_in_sync is False

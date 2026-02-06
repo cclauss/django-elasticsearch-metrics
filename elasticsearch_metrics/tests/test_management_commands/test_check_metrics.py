@@ -18,7 +18,7 @@ def test_exits_with_error_if_out_of_sync(run_mgmt_command, mock_check_index_temp
     mock_check_index_template.side_effect = exceptions.IndexTemplateNotFoundError(
         "Index template does not exist", client_error=None
     )
-    with pytest.raises(SystemExit):
+    with self.assertRaises(SystemExit):
         run_mgmt_command(Command, ["check_metrics"])
 
 

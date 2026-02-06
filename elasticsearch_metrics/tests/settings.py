@@ -11,17 +11,17 @@ INSTALLED_APPS = [
 MIDDLEWARE_CLASSES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3"}}
 
-DJELME_CONNECTIONS = {
+DJELMETRICS_CONNECTIONS = {
     "elastic6foo": {
-        "DJELMETRICS_IMP": "elasticsearch_metrics.elastic6",
+        "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic6",
         "host": os.environ.get("ELASTICSEARCH6_HOST"),
     },
     "elastic8foo": {
-        "DJELMETRICS_IMP": "elasticsearch_metrics.elastic8",
+        "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic8",
         "host": os.environ.get("ELASTICSEARCH8_HOST"),
     },
     "elastic8bar": {
-        "DJELMETRICS_IMP": "elasticsearch_metrics.elastic8",
+        "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic8",
         "host": os.environ.get("ELASTICSEARCH8_HOST"),
     },
 }

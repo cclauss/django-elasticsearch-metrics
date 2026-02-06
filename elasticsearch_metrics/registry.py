@@ -2,8 +2,8 @@ from django.apps import apps
 from collections import defaultdict, OrderedDict
 
 
-class Registry(object):
-    """Registry that keeps track of Metric classes (similar to how
+class DjelmetricsRegistry:
+    """DjelmetricsRegistry keeping track of Metric classes (similar to how
     django.apps.registry.Apps keeps track of Model classes).
     """
 
@@ -72,4 +72,4 @@ class Registry(object):
         return self.all_metrics[app_label]
 
 
-registry = Registry()
+registry = DjelmetricsRegistry()

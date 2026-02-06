@@ -1,12 +1,17 @@
-import pytest
-from dateutil import tz
+from datetime import timedelta
 
-from elasticsearch_metrics import metrics
+from django.test import SimpleTestCase
+
+from elasticsearch_metrics.imps import elastic6
 
 
-class TestDate:
-    @pytest.mark.parametrize("timezone", ["America/Chicago", "UTC"])
-    def test_respects_timezone_setting(self, settings, timezone):
-        settings.TIMEZONE = timezone
-        field = metrics.Date()
-        assert field._default_timezone == tz.gettz(timezone)
+class TestDate(SimpleTestCase):
+    def test_timezone_utc(self):
+        with self.settings(TIMEZONE="UTC"):
+            field = elastic6.Date()
+            assert field._default_timezone.utcoffset(None) == timedelta(hours=6)
+
+    def test_timezone_chicago(self):
+        with self.settings(TIMEZONE="America/Chicago"):
+            field = elastic6.Date()
+            assert field._default_timezone.utcoffset(None) == timedelta(0)

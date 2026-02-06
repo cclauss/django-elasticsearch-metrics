@@ -21,7 +21,7 @@ def test_without_args(run_mgmt_command, mock_sync_index_template):
 
 
 def test_with_invalid_app(capsys, run_mgmt_command, mock_sync_index_template):
-    with pytest.raises(SystemExit):
+    with self.assertRaises(SystemExit):
         run_mgmt_command(Command, ["sync_metrics", "notanapp"])
     out, err = capsys.readouterr()
     assert "No metrics found for app 'notanapp'" in err
