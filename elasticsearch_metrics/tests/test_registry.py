@@ -13,7 +13,7 @@ class MetricWithAppLabel(elastic6.Metric):
 class TestDjelmetricsRegistry(SimpleTestCase):
     def test_metric_in_app_is_in_registry(self):
         assert "dummy6app" in registry.all_metrics
-        assert registry.all_metrics["dummy6app"]["dummymetric"] is Dummy6Metric
+        assert registry.all_metrics["dummy6app"]["dummy6metric"] is Dummy6Metric
 
     def test_metric_with_explicit_label_set_is_in_registry(self):
         assert registry.all_metrics["dummy6app"]["metricwithapplabel"] is MetricWithAppLabel

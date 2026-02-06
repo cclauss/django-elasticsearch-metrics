@@ -134,8 +134,8 @@ class TestGetIndexTemplate(SimpleTestCase):
     def test_get_index_template_default_template_name(self):
         template = Dummy6Metric.get_index_template()
         assert isinstance(template, IndexTemplate)
-        assert template._template_name == "dummyapp_dummymetric"
-        assert "dummyapp_dummymetric_*" in template.to_dict()["index_patterns"]
+        assert template._template_name == "dummy6app_dummy6metric"
+        assert "dummy6app_dummy6metric_*" in template.to_dict()["index_patterns"]
 
     def test_get_index_template_uses_app_label_in_class_meta(self):
         class MyMetric(elastic6.Metric):
@@ -150,10 +150,10 @@ class TestGetIndexTemplate(SimpleTestCase):
     ):
         template = Dummy6MetricWithExplicitTemplateName.get_index_template()
         # template name specified in class Meta
-        assert template._template_name == "dummymetric"
+        assert template._template_name == "dummy6metric"
         # template is not specified, so it's generated
         assert (
-            "dummyapp_dummymetricwithexplicittemplatename_*"
+            "dummy6app_dummy6metricwithexplicittemplatename_*"
             in template.to_dict()["index_patterns"]
         )
 
@@ -161,10 +161,10 @@ class TestGetIndexTemplate(SimpleTestCase):
         template = Dummy6MetricWithExplicitTemplatePattern.get_index_template()
         # template name specified in class Meta
         assert (
-            template._template_name == "dummyapp_dummymetricwithexplicittemplatepattern"
+            template._template_name == "dummy6app_dummy6metricwithexplicittemplatepattern"
         )
         # template is not specified, so it's generated
-        assert "dummymetric-*" in template.to_dict()["index_patterns"]
+        assert "dummy6metric-*" in template.to_dict()["index_patterns"]
 
     def test_inheritance(self):
         class MyBaseMetric(elastic6.Metric):
@@ -178,16 +178,16 @@ class TestGetIndexTemplate(SimpleTestCase):
 
         class ConcreteMetric(MyBaseMetric):
             class Meta:
-                app_label = "dummyapp"
+                app_label = "dummy6app"
 
         template = ConcreteMetric.get_index_template()
-        assert template._template_name == "dummyapp_concretemetric"
+        assert template._template_name == "dummy6app_concretemetric"
         assert template._index.to_dict()["settings"] == {"number_of_shards": 2}
 
     def test_source_may_be_enabled(self):
         class MyMetric(elastic6.Metric):
             class Meta:
-                app_label = "dummyapp"
+                app_label = "dummy6app"
                 template_name = "mymetric"
                 template = "mymetric-*"
                 source = elastic6.MetaField(enabled=True)
