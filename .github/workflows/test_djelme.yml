@@ -10,13 +10,13 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         id: setup-py
         with:
-          python-version: '3.7'
+          python-version: '3.11'
       - run: pip install -U tox
       - name: alias pythonX.Y for tox
         run: alias python${{ steps.setup-py.outputs.python-version }}=${{ steps.setup-py.outputs.python-path }}
@@ -26,8 +26,8 @@ jobs:
   test:
     strategy:
       matrix:
-        python: ['3.10']
-        django: ['3.2', '4.1']
+        python: ['3.11']
+        django: ['4.2']
         # TODO: elasticsearch: ['6', '7', '8', '9']
     runs-on: ubuntu-20.04
     services:
