@@ -17,11 +17,18 @@ def mock_es8_save():
     return mock.patch("elasticsearch_metrics.imps.elastic8.Document.save")
 
 
-def run_mgmt_command(cmd: str | BaseCommand, *args, **options) -> tuple[str, str]:
+def run_mgmt_command(cmd: str | BaseCommand | type[BaseCommand], *args, **options) -> tuple[str, str]:
     """run a django management command, return (stdout, stderr) tuple
+
+    may be called with a command name or Command type/instance
     """
+    _cmd = (
+        cmd
+        if isinstance(cmd, (str, BaseCommand))
+        else cmd()
+    )
     _out, _err = StringIO(), StringIO()
-    call_command(cmd, *args, **options, stdout=_out, stderr=_err)
+    call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
     return _out.getvalue(), _err.getvalue()
 
 

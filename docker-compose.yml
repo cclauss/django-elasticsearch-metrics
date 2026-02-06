@@ -11,5 +11,5 @@ services:
     environment:
       TOXENV: py311-django42
       ELASTICSEARCH6_HOST: elasticsearch6:9200
-    volumes:
-      - ./:/code:cached
+    # volumes:
+    #   - ./:/code:cached

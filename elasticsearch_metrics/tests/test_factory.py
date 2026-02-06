@@ -1,6 +1,6 @@
 import factory
 
-from elasticsearch_metrics import elastic6
+from elasticsearch_metrics.imps import elastic6
 from elasticsearch_metrics.factory import MetricFactory
 from elasticsearch_metrics.tests._test_util import MockSaveTestCase
 from elasticsearch_metrics.tests.dummy6app.metrics import Dummy6Metric

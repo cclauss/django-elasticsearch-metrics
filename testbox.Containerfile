@@ -6,7 +6,7 @@ RUN mkdir -p /code
 WORKDIR /code
 
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --compile --no-root --with=dev
+RUN poetry install --compile --no-root --with=dev --extras=elastic6 --extras=elastic8
 COPY ./ ./
 RUN poetry install --compile --only-root
 

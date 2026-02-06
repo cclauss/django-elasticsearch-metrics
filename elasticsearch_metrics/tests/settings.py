@@ -2,6 +2,8 @@ import os
 
 SECRET_KEY = "not so secret in tests"
 DEBUG = True
+USE_TZ = True
+TIMEZONE = 'UTC'
 ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     "elasticsearch_metrics.apps.ElasticsearchMetricsConfig",
@@ -9,7 +11,7 @@ INSTALLED_APPS = [
     "elasticsearch_metrics.tests.dummy8app",
 ]
 MIDDLEWARE_CLASSES = []
-DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3"}}
+DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": "test_djelme"}}
 
 DJELMETRICS_CONNECTIONS = {
     "elastic6foo": {
