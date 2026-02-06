@@ -13,10 +13,6 @@ def mock_es6_save():
     return mock.patch("elasticsearch_metrics.imps.elastic6.Document.save")
 
 
-def mock_es8_save():
-    return mock.patch("elasticsearch_metrics.imps.elastic8.Document.save")
-
-
 def run_mgmt_command(cmd: str | BaseCommand | type[BaseCommand], *args, **options) -> tuple[str, str]:
     """run a django management command, return (stdout, stderr) tuple
 
@@ -46,4 +42,3 @@ class RealElasticTestCase(SimpleTestCase, abc.ABC):
 class MockSaveTestCase(SimpleTestCase, abc.ABC):
     def setUp(self):
         self.mocked_es6_save = self.enterContext(mock_es6_save())
-        self.mocked_es8_save = self.enterContext(mock_es8_save())
