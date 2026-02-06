@@ -1,4 +1,4 @@
-from elasticsearch_metrics import elastic6
+from elasticsearch_metrics.imps import elastic6
 
 
 class Dummy6Metric(elastic6.Metric):

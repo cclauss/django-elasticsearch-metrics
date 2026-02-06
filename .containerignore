@@ -1,0 +1,7 @@
+.git
+.tox
+.venv
+garbage
+**/*.pyc
+testbox.Containerfile
+docker-compose.yml

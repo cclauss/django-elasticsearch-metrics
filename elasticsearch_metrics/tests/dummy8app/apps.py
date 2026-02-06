@@ -2,4 +2,4 @@ from django.apps import AppConfig
 
 
 class Dummy8appConfig(AppConfig):
-    name = "tests.dummy8app"
+    name = "elasticsearch_metrics.tests.dummy8app"

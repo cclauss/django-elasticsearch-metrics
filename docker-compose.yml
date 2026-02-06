@@ -5,7 +5,7 @@ services:
   testbox:
     build:
       context: .
-      dockerfile: testbox.Dockerfile
+      dockerfile: testbox.Containerfile
     depends_on:
       - elasticsearch6
     environment:

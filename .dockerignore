@@ -1,8 +1,0 @@
-**/.git/
-**/.tox/
-**/*.pyc
-Dockerfile
-docker-compose.yml
-.dockerignore
-.gitignore
-.venv/

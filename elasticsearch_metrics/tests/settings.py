@@ -5,8 +5,8 @@ DEBUG = True
 ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     "elasticsearch_metrics.apps.ElasticsearchMetricsConfig",
-    "tests.dummy6app",
-    "tests.dummy8app",
+    "elasticsearch_metrics.tests.dummy6app",
+    "elasticsearch_metrics.tests.dummy8app",
 ]
 MIDDLEWARE_CLASSES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3"}}
