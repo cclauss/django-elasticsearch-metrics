@@ -52,6 +52,7 @@ build-backend = "poetry.core.masonry.api"
 [dependency-groups]
 tests = [
     "factory-boy==3.3.3",
+    "tox>=4.0.0",
 ]
 lint = [
     "pre-commit==2.17.0",
@@ -63,7 +64,6 @@ dev = [
     { include-group = "tests" },
     { include-group = "lint" },
     "konch>=3.0.0",
-    "tox>=4.0.0",
 ]
 
 [tool.poetry]

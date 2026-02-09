@@ -16,9 +16,8 @@ services:
       elasticsearch6:
         condition: service_healthy
     environment:
-      # TOXENV: py311-django42
-      ELASTICSEARCH6_HOST: elasticsearch6
-      ELASTICSEARCH6_PORT: 9200
+      # TOXENV: py310-django42
+      ELASTICSEARCH6_HOST: elasticsearch6:9200
     networks:
       - djelme
     # volumes:

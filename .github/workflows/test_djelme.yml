@@ -31,17 +31,23 @@ jobs:
         django: ['4.2', '5.1', '5.2']
         # TODO: elasticsearch: ['6', '7', '8', '9']
     services:
-      elasticsearch:
+      elasticsearch6:
         image: elasticsearch:6.8.23
         ports:
-          - 9201:9200
+          - 9206:9200
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         id: setup-py
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install -U tox
-      - run: alias python${{ steps.setup-py.outputs.python-version }}=${{ steps.setup-py.outputs.python-path }}
-      - run: TOXENV=`echo 'py${{ matrix.python }}-django${{matrix.django}}' | sed 's/\.//g'` tox
 
+      - name: alias python
+        run: alias python${{ steps.setup-py.outputs.python-version }}=${{ steps.setup-py.outputs.python-path }}
+
+      - name: install despondencies
+        run: pip install -U poetry && poetry install --with=dev --extras=elastic6
+
+      - run: TOXENV=`echo 'py${{ matrix.python }}-django${{matrix.django}}' | sed 's/\.//g'` poetry run tox
+        env:
+          ELASTICSEARCH6_HOST: localhost:9206
