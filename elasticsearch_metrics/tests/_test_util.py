@@ -9,8 +9,7 @@ from elasticsearch_metrics.djelmetrics_imps import each_djelmetrics_imp
 
 
 class SimpleDjelmeTestCase(SimpleTestCase):
-    """SimpleDjelmeTestCase: base test case with djelme-specific conveniences
-    """
+    """SimpleDjelmeTestCase: base test case with djelme-specific conveniences"""
 
     def enterContext(self, context_manager):
         # TestCase.enterContext added in python3.11 -- implementing here until 3.10 eol
@@ -39,8 +38,8 @@ class SimpleDjelmeTestCase(SimpleTestCase):
 
 
 class RealElasticTestCase(SimpleDjelmeTestCase):
-    """RealElasticTestCase: base test case with actual elasticsearch running
-    """
+    """RealElasticTestCase: base test case with actual elasticsearch running"""
+
     __auto_setup_imps: bool
 
     def __init_subclass__(cls, /, auto_setup_imps: bool = True, **kwargs):

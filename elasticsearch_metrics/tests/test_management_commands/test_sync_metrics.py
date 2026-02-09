@@ -39,7 +39,9 @@ class TestSyncMetrics(SimpleDjelmeTestCase):
             "default": {"hosts": "localhost:9201"},
             "alternate": {"hosts": "localhost:9202"},
         }
-        out, err = self.run_mgmt_command(sync_metrics.Command, "--connection", "alternate")
+        out, err = self.run_mgmt_command(
+            sync_metrics.Command, "--connection", "alternate"
+        )
         call_kwargs = self.mock_sync_index_template.call_args[1]
         assert call_kwargs["using"] == "alternate"
         assert "Using connection: 'alternate'" in out
