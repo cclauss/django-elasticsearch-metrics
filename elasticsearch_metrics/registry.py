@@ -8,6 +8,7 @@ class DjelmetricsRegistry:
     """DjelmetricsRegistry keeping track of Metric classes (similar to how
     django.apps.registry.Apps keeps track of Model classes).
     """
+
     all_metrics: dict[str, dict[str, type]]
 
     def __init__(self) -> None:
@@ -56,7 +57,9 @@ class DjelmetricsRegistry:
                 "App '{}' doesn't have a '{}' metric.".format(app_label, metric_name)
             ) from e
 
-    def get_metrics(self, app_label: str | None = None, imp_name: str | None = None) -> Iterator[type]:
+    def get_metrics(
+        self, app_label: str | None = None, imp_name: str | None = None
+    ) -> Iterator[type]:
         """Return list of registered metric classes, optionally filtered on an app_label and/or imp_name."""
         apps.check_apps_ready()
 

@@ -29,5 +29,7 @@ class Command(BaseCommand):
                 template_name = metric._template_name
                 template_pattern = style.ES_TEMPLATE(metric._template_pattern)
                 self.stdout.write(
-                    "  {metric_name} -> {template_name} ({template_pattern})".format(**locals())
+                    "  {metric_name} -> {template_name} ({template_pattern})".format(
+                        **locals()
+                    )
                 )

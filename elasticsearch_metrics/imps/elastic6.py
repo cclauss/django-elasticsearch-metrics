@@ -1,5 +1,4 @@
-"""elasticsearch_metrics.imps.elastic6: store events and reports in elasticsearch 6
-"""
+"""elasticsearch_metrics.imps.elastic6: store events and reports in elasticsearch 6"""
 
 from collections import ChainMap
 from collections.abc import Iterator
@@ -280,8 +279,8 @@ class Metric(Document, BaseMetric):
 
 @dataclasses.dataclass
 class DjelmeElastic6Imp(ProtoDjelmetricsImp):
-    """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)
-    """
+    """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)"""
+
     imp_name: str
     imp_config: dict[str, str]
 

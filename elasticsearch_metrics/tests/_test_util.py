@@ -13,21 +13,19 @@ def mock_es6_save():
     return mock.patch("elasticsearch_metrics.imps.elastic6.Document.save")
 
 
-def run_mgmt_command(cmd: str | BaseCommand | type[BaseCommand], *args, **options) -> tuple[str, str]:
+def run_mgmt_command(
+    cmd: str | BaseCommand | type[BaseCommand], *args, **options
+) -> tuple[str, str]:
     """run a django management command, return (stdout, stderr) tuple
 
     may be called with a command name or Command type/instance
     """
-    _cmd = (
-        cmd
-        if isinstance(cmd, (str, BaseCommand))
-        else cmd()
-    )
+    _cmd = cmd if isinstance(cmd, (str, BaseCommand)) else cmd()
     _out, _err = StringIO(), StringIO()
     try:
         call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
     except CommandError as _cmd_err:
-        return _out.getvalue(), '\n'.join((_err.getvalue(), str(_cmd_err)))
+        return _out.getvalue(), "\n".join((_err.getvalue(), str(_cmd_err)))
 
     return _out.getvalue(), _err.getvalue()
 

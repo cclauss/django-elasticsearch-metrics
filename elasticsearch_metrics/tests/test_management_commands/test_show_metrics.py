@@ -11,6 +11,6 @@ class TestShowMetricsCommand(SimpleTestCase):
         assert "dummy6app_dummy6metric_*" in out
 
     def test_without_args_by_command(self):
-        out, err = run_mgmt_command('show_metrics')
+        out, err = run_mgmt_command("show_metrics")
         assert "Dummy6Metric" in out
         assert "dummy6app_dummy6metric_*" in out

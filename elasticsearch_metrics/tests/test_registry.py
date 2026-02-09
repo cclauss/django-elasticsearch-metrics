@@ -16,7 +16,10 @@ class TestDjelmetricsRegistry(SimpleTestCase):
         assert registry.all_metrics["dummy6app"]["dummy6metric"] is Dummy6Metric
 
     def test_metric_with_explicit_label_set_is_in_registry(self):
-        assert registry.all_metrics["dummy6app"]["metricwithapplabel"] is MetricWithAppLabel
+        assert (
+            registry.all_metrics["dummy6app"]["metricwithapplabel"]
+            is MetricWithAppLabel
+        )
 
     def test_conflicting_metric(self):
         with self.assertRaises(RuntimeError):
@@ -32,12 +35,16 @@ class TestDjelmetricsRegistry(SimpleTestCase):
         with self.assertRaises(LookupError) as excinfo:
             registry.get_metric("dummy6app", "DoesNotExist")
         assert (
-            "App 'dummy6app' doesn't have a 'DoesNotExist' metric." in excinfo.exception.args[0]
+            "App 'dummy6app' doesn't have a 'DoesNotExist' metric."
+            in excinfo.exception.args[0]
         )
 
         with self.assertRaises(LookupError) as excinfo:
             registry.get_metric("notanapp", "Dummy6Metric")
-        assert "No metrics found in app with label 'notanapp'." in excinfo.exception.args[0]
+        assert (
+            "No metrics found in app with label 'notanapp'."
+            in excinfo.exception.args[0]
+        )
 
     def test_get_metrics(self):
         class AnotherMetric(elastic6.Metric):
@@ -51,7 +58,10 @@ class TestDjelmetricsRegistry(SimpleTestCase):
 
         with self.assertRaises(LookupError) as excinfo:
             list(registry.get_metrics("notanapp"))
-        assert "No metrics found in app with label 'notanapp'." in excinfo.exception.args[0]
+        assert (
+            "No metrics found in app with label 'notanapp'."
+            in excinfo.exception.args[0]
+        )
 
     def test_get_metrics_excludes_abstract_metrics(self):
         class AbstractMetric(elastic6.Metric):

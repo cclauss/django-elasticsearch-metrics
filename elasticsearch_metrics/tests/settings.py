@@ -3,7 +3,7 @@ import os
 SECRET_KEY = "not so secret in tests"
 DEBUG = True
 USE_TZ = True
-TIMEZONE = 'UTC'
+TIMEZONE = "UTC"
 ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     "elasticsearch_metrics.apps.ElasticsearchMetricsConfig",

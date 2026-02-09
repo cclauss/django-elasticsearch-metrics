@@ -26,7 +26,6 @@ from elasticsearch_metrics.tests.dummy6app.metrics import (
     Dummy6MetricWithExplicitTemplateName,
 )
 
-
 route_prefix_analyzer = analyzer(
     "route_prefix_analyzer",
     tokenizer=tokenizer("route_prefix_tokenizer", "path_hierarchy", delimiter="."),
@@ -118,7 +117,9 @@ class TestGetIndexTemplate(SimpleTestCase):
         assert "my_int" not in template2.to_dict()["mappings"]["doc"]["properties"]
         assert "my_keyword" in template2.to_dict()["mappings"]["doc"]["properties"]
 
-    @unittest.skip('TODO: detects containing app, now tests under elasticsearch_metrics')
+    @unittest.skip(
+        "TODO: detects containing app, now tests under elasticsearch_metrics"
+    )
     def test_declaring_metric_with_no_app_label_or_template_name_errors(self):
         with self.assertRaises(RuntimeError):
 
@@ -254,7 +255,7 @@ class TestSignals(MockSaveTestCase):
 class TestIntegration(RealElasticTestCase):
     @property
     def es6_client(self):
-        return connections.get_connection('default')
+        return connections.get_connection("default")
 
     def test_mapping(self):
         PreprintView.init()
@@ -282,7 +283,7 @@ class TestIntegration(RealElasticTestCase):
 class TestIntegrationSetup(RealElasticTestCase, auto_setup_imps=False):
     @property
     def es6_client(self):
-        return connections.get_connection('default')
+        return connections.get_connection("default")
 
     def test_init(self):
         PreprintView.init()
