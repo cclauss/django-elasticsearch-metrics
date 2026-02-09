@@ -1,7 +1,6 @@
 import unittest
 import datetime as dt
 
-from django.test import SimpleTestCase
 from django.utils import timezone
 
 from elasticsearch_metrics.imps import elastic6
@@ -18,6 +17,7 @@ from elasticsearch_metrics.exceptions import (
     IndexTemplateOutOfSyncError,
 )
 from elasticsearch_metrics.tests._test_util import (
+    SimpleDjelmeTestCase,
     MockSaveTestCase,
     RealElasticTestCase,
 )
@@ -46,7 +46,7 @@ class PreprintView(elastic6.Metric):
         template_name = "osf_metrics_preprintviews"
 
 
-class TestGetIndexName(SimpleTestCase):
+class TestGetIndexName(SimpleDjelmeTestCase):
     def test_get_index_name(self):
         date = dt.date(2020, 2, 14)
         assert (
@@ -70,7 +70,7 @@ class TestGetIndexName(SimpleTestCase):
         )
 
 
-class TestGetIndexTemplate(SimpleTestCase):
+class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_get_index_template_returns_template_with_correct_name_and_pattern(self):
         template = PreprintView.get_index_template()
         assert isinstance(template, IndexTemplate)

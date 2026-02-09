@@ -1,4 +1,3 @@
-import abc
 from io import StringIO
 from unittest import mock
 
@@ -9,29 +8,39 @@ from django.test import SimpleTestCase
 from elasticsearch_metrics.djelmetrics_imps import each_djelmetrics_imp
 
 
-def mock_es6_save():
-    return mock.patch("elasticsearch_metrics.imps.elastic6.Document.save")
-
-
-def run_mgmt_command(
-    cmd: str | BaseCommand | type[BaseCommand], *args, **options
-) -> tuple[str, str]:
-    """run a django management command, return (stdout, stderr) tuple
-
-    may be called with a command name or Command type/instance
+class SimpleDjelmeTestCase(SimpleTestCase):
+    """SimpleDjelmeTestCase: base test case with djelme-specific conveniences
     """
-    _cmd = cmd if isinstance(cmd, (str, BaseCommand)) else cmd()
-    _out, _err = StringIO(), StringIO()
-    try:
-        call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
-    except CommandError as _cmd_err:
-        return _out.getvalue(), "\n".join((_err.getvalue(), str(_cmd_err)))
 
-    return _out.getvalue(), _err.getvalue()
+    def enterContext(self, context_manager):
+        # TestCase.enterContext added in python3.11 -- implementing here until 3.10 eol
+        result = context_manager.__enter__()
+        self.addCleanup(lambda: context_manager.__exit__(None, None, None))
+        return result
+
+    def run_mgmt_command(
+        self,
+        cmd: str | BaseCommand | type[BaseCommand],
+        *args,
+        **options,
+    ) -> tuple[str, str]:
+        """run a django management command, return (stdout, stderr) tuple
+
+        may be called with a command name or Command type/instance
+        """
+        _cmd = cmd if isinstance(cmd, (str, BaseCommand)) else cmd()
+        _out, _err = StringIO(), StringIO()
+        try:
+            call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
+        except CommandError as _cmd_err:
+            return _out.getvalue(), "\n".join((_err.getvalue(), str(_cmd_err)))
+
+        return _out.getvalue(), _err.getvalue()
 
 
-# base class for testing with actual elasticsearch running
-class RealElasticTestCase(SimpleTestCase):
+class RealElasticTestCase(SimpleDjelmeTestCase):
+    """RealElasticTestCase: base test case with actual elasticsearch running
+    """
     __auto_setup_imps: bool
 
     def __init_subclass__(cls, /, auto_setup_imps: bool = True, **kwargs):
@@ -59,6 +68,8 @@ class RealElasticTestCase(SimpleTestCase):
             _imp.teardown_db()
 
 
-class MockSaveTestCase(SimpleTestCase, abc.ABC):
+class MockSaveTestCase(SimpleDjelmeTestCase):
     def setUp(self):
-        self.mocked_es6_save = self.enterContext(mock_es6_save())
+        self.mocked_es6_save = self.enterContext(
+            mock.patch("elasticsearch_metrics.imps.elastic6.Document.save"),
+        )
