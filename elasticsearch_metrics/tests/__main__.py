@@ -10,6 +10,6 @@ if __name__ == '__main__':
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "elasticsearch_metrics.tests.settings")
     django.setup()
-    django.core.management.call_command("test", "--failfast", "--keepdb")
+    django.core.management.call_command("test", "--failfast", "--pdb")
 
     # TODO: lint with flake8, mypy, ...

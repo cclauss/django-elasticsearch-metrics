@@ -27,7 +27,7 @@ class Command(BaseCommand):
             for metric in registry.get_metrics(app_label=app_label):
                 metric_name = style.METRIC(metric.__name__)
                 template_name = metric._template_name
-                template = style.ES_TEMPLATE(metric._template)
+                template_pattern = style.ES_TEMPLATE(metric._template_pattern)
                 self.stdout.write(
-                    "  {metric_name} -> {template_name} ({template})".format(**locals())
+                    "  {metric_name} -> {template_name} ({template_pattern})".format(**locals())
                 )

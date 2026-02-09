@@ -9,6 +9,7 @@ from elasticsearch6_dsl import (
     IndexTemplate,
     analyzer,
     tokenizer,
+    connections,
 )
 
 from elasticsearch_metrics import signals
@@ -23,7 +24,6 @@ from elasticsearch_metrics.tests._test_util import (
 from elasticsearch_metrics.tests.dummy6app.metrics import (
     Dummy6Metric,
     Dummy6MetricWithExplicitTemplateName,
-    Dummy6MetricWithExplicitTemplatePattern,
 )
 
 
@@ -45,7 +45,6 @@ class PreprintView(elastic6.Metric):
     class Meta:
         app_label = "dummy6app"
         template_name = "osf_metrics_preprintviews"
-        template = "osf_metrics_preprintviews-*"
 
 
 class TestGetIndexName(SimpleTestCase):
@@ -77,7 +76,7 @@ class TestGetIndexTemplate(SimpleTestCase):
         template = PreprintView.get_index_template()
         assert isinstance(template, IndexTemplate)
         assert template._template_name == "osf_metrics_preprintviews"
-        assert "osf_metrics_preprintviews-*" in template.to_dict()["index_patterns"]
+        assert "osf_metrics_preprintviews_*" in template.to_dict()["index_patterns"]
 
     def test_get_index_template_respects_index_settings(self):
         template = PreprintView.get_index_template()
@@ -152,20 +151,8 @@ class TestGetIndexTemplate(SimpleTestCase):
         template = Dummy6MetricWithExplicitTemplateName.get_index_template()
         # template name specified in class Meta
         assert template._template_name == "dummy6metric"
-        # template is not specified, so it's generated
-        assert (
-            "dummy6app_dummy6metricwithexplicittemplatename_*"
-            in template.to_dict()["index_patterns"]
-        )
-
-    def test_template_defined_with_no_template_name_falls_back_to_default_name(self):
-        template = Dummy6MetricWithExplicitTemplatePattern.get_index_template()
-        # template name specified in class Meta
-        assert (
-            template._template_name == "dummy6app_dummy6metricwithexplicittemplatepattern"
-        )
-        # template is not specified, so it's generated
-        assert "dummy6metric-*" in template.to_dict()["index_patterns"]
+        # template pattern generated using template name
+        assert "dummy6metric_*" in template.to_dict()["index_patterns"]
 
     def test_inheritance(self):
         class MyBaseMetric(elastic6.Metric):
@@ -190,7 +177,6 @@ class TestGetIndexTemplate(SimpleTestCase):
             class Meta:
                 app_label = "dummy6app"
                 template_name = "mymetric"
-                template = "mymetric-*"
                 source = elastic6.MetaField(enabled=True)
 
         template = MyMetric.get_index_template()
@@ -214,7 +200,7 @@ class TestRecord(MockSaveTestCase):
         mock_now.return_value = fake_now
 
         p = PreprintView.record(provider_id="abc12")
-        assert self.mock_es6_save.call_count == 1
+        assert self.mocked_es6_save.call_count == 1
         assert p.timestamp == fake_now
 
 
@@ -266,17 +252,21 @@ class TestSignals(MockSaveTestCase):
 
 
 class TestIntegration(RealElasticTestCase):
-    def test_init(self, client):
+    @property
+    def es6_client(self):
+        return connections.get_connection('default')
+
+    def test_mapping(self):
         PreprintView.init()
         name = PreprintView.get_index_name()
-        mapping = client.indices.get_mapping(index=name)
+        mapping = self.es6_client.indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["doc"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["provider_id"] == {"type": "keyword"}
         assert properties["user_id"] == {"type": "keyword"}
         assert properties["preprint_id"] == {"type": "keyword"}
 
-    def test_create_document(self, client):
+    def test_create_document(self):
         provider_id = "12345"
         user_id = "abcde"
         preprint_id = "zyxwv"
@@ -287,6 +277,22 @@ class TestIntegration(RealElasticTestCase):
         document = PreprintView.get(id=doc.meta.id, index=PreprintView.get_index_name())
         # TODO flesh out this test more.  Try to query ES?
         assert document is not None
+
+
+class TestIntegrationSetup(RealElasticTestCase, auto_setup_imps=False):
+    @property
+    def es6_client(self):
+        return connections.get_connection('default')
+
+    def test_init(self):
+        PreprintView.init()
+        name = PreprintView.get_index_name()
+        mapping = self.es6_client.indices.get_mapping(index=name)
+        properties = mapping[name]["mappings"]["doc"]["properties"]
+        assert properties["timestamp"] == {"type": "date"}
+        assert properties["provider_id"] == {"type": "keyword"}
+        assert properties["user_id"] == {"type": "keyword"}
+        assert properties["preprint_id"] == {"type": "keyword"}
 
     def test_check_index_template(self):
         with self.assertRaises(IndexTemplateNotFoundError):
@@ -300,7 +306,7 @@ class TestIntegration(RealElasticTestCase):
         )
         with self.assertRaises(IndexTemplateOutOfSyncError) as excinfo:
             assert PreprintView.check_index_template() is False
-        error = excinfo.value
+        error = excinfo.exception
         assert error.settings_in_sync is False
         assert error.mappings_in_sync is True
         assert error.patterns_in_sync is True

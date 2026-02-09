@@ -14,16 +14,19 @@ MIDDLEWARE_CLASSES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": "test_djelme"}}
 
 DJELMETRICS_IMPS = {
-    "elastic6foo": {
+    "default": {
         "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic6",
         "host": os.environ.get("ELASTICSEARCH6_HOST"),
+        "port": os.environ.get("ELASTICSEARCH6_PORT", 9200),
     },
     # "elastic8foo": {
     #     "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic8",
     #     "host": os.environ.get("ELASTICSEARCH8_HOST"),
+    #     "port": os.environ.get("ELASTICSEARCH8_PORT", 9200),
     # },
     # "elastic8bar": {
     #     "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic8",
     #     "host": os.environ.get("ELASTICSEARCH8_HOST"),
+    #     "port": os.environ.get("ELASTICSEARCH8_PORT", 9200),
     # },
 }

@@ -33,17 +33,32 @@ def run_mgmt_command(cmd: str | BaseCommand | type[BaseCommand], *args, **option
 
 
 # base class for testing with actual elasticsearch running
-class RealElasticTestCase(SimpleTestCase, abc.ABC):
+class RealElasticTestCase(SimpleTestCase):
+    __auto_setup_imps: bool
+
+    def __init_subclass__(cls, /, auto_setup_imps: bool = True, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.__auto_setup_imps = auto_setup_imps
+
     def setUp(self):
+        super().setUp()
+        if self.__auto_setup_imps:
+            self.setup_djelme_imps()
+
+    def tearDown(self):
+        super().tearDown()
+        self.teardown_djelme_imps()
+
+    def setup_djelme_imps(self):
         # TODO: prefix index names, avoid collisions across test runs
         # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_IMPS
-        _djelme_connections = list(each_djelmetrics_imp())
-        for _conn in _djelme_connections:
-            _conn.teardown_db()  # in case it already exists
-        for _conn in _djelme_connections:
-            _conn.setup_db()
-        for _conn in _djelme_connections:
-            self.addCleanup(_conn.teardown_db)
+        self.teardown_djelme_imps()  # in case any already exist
+        for _imp in each_djelmetrics_imp():
+            _imp.setup_db()
+
+    def teardown_djelme_imps(self):
+        for _imp in each_djelmetrics_imp():
+            _imp.teardown_db()
 
 
 class MockSaveTestCase(SimpleTestCase, abc.ABC):

@@ -60,7 +60,6 @@ class MetricMeta(IndexMeta):
             return new_cls
 
         template_name = getattr(meta, "template_name", None)
-        template = getattr(meta, "template", None)
         abstract = getattr(meta, "abstract", False)
 
         app_label = getattr(meta, "app_label", None)
@@ -77,17 +76,14 @@ class MetricMeta(IndexMeta):
             else:
                 app_label = app_config.label
 
-        if not template_name or not template:
+        if not template_name:
             metric_name = new_cls.__name__.lower()
             # If template_name not specified in class Meta,
             # compute it as <app label>_<lowercased class name>
-            if not template_name:
-                template_name = "{}_{}".format(app_label, metric_name)
-            # template is <app label>_<lowercased class name>-*
-            template = template or "{}_{}_*".format(app_label, metric_name)
+            template_name = f"{app_label}_{metric_name}"
 
         new_cls._template_name = template_name
-        new_cls._template = template
+        new_cls._template_pattern = f"{template_name}_*"  # template pattern
         # Abstract base metrics can't be instantiated and don't appear in
         # the list of metrics for an app.
         if not abstract:
@@ -226,7 +222,7 @@ class BaseMetric(metaclass=MetricMeta):
     def get_index_template(cls):
         """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
         return cls._index.as_template(
-            template_name=cls._template_name, pattern=cls._template
+            template_name=cls._template_name, pattern=cls._template_pattern
         )
 
     @classmethod
@@ -279,7 +275,7 @@ class Metric(Document, BaseMetric):
         """Overrides Document._default_index so that .search, .get, etc.
         use the metric's template pattern as the default index
         """
-        return index or cls._template
+        return index or cls._template_pattern
 
 
 @dataclasses.dataclass
@@ -304,10 +300,11 @@ class DjelmeElastic6Imp(ProtoDjelmetricsImp):
 
     def teardown_db(self) -> None:
         for _metric_type in self._each_metric_type():
-            _indexname_wildcard = _metric_type._template
+            _indexname_wildcard = _metric_type._template_pattern
+            _templatename = _metric_type._template_name
             self.elastic6_client.indices.delete(index=_indexname_wildcard)
             try:
-                self.elastic6_client.indices.delete_template(_indexname_wildcard)
+                self.elastic6_client.indices.delete_template(_templatename)
             except NotFoundError:
                 pass
 

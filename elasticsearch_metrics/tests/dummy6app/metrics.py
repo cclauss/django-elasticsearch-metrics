@@ -10,8 +10,3 @@ class Dummy6MetricWithExplicitTemplateName(elastic6.Metric):
 
     class Meta:
         template_name = "dummy6metric"
-
-
-class Dummy6MetricWithExplicitTemplatePattern(elastic6.Metric):
-    class Meta:
-        template = "dummy6metric-*"
