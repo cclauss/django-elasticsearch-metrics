@@ -1,13 +1,16 @@
-from django.apps import apps
 from collections import defaultdict, OrderedDict
+from collections.abc import Iterator
+
+from django.apps import apps
 
 
 class DjelmetricsRegistry:
     """DjelmetricsRegistry keeping track of Metric classes (similar to how
     django.apps.registry.Apps keeps track of Model classes).
     """
+    all_metrics: dict[str, dict[str, type]]
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Mapping of app labels => metric names => metric classes
         # Every time a metric is imported, MetricMeta.__new__
         # calls registry.register which creates
@@ -15,7 +18,7 @@ class DjelmetricsRegistry:
         self.all_metrics = defaultdict(OrderedDict)
 
     # similar to apps.register_model
-    def register(self, app_label, metric_cls):
+    def register(self, app_label: str, metric_cls: type) -> None:
         """Add a Metric to the registry."""
         app_metrics = self.all_metrics[app_label]
         metric_name = metric_cls.__name__.lower()
@@ -29,7 +32,7 @@ class DjelmetricsRegistry:
         app_metrics[metric_name] = metric_cls
 
     # similar to apps.get_model
-    def get_metric(self, app_label, metric_name=None):
+    def get_metric(self, app_label: str, metric_name: str | None = None) -> type:
         """Return the metric matching the given app_label and model_name.
 
         As a shortcut, app_label may be in the form <app_label>.<model_name>.
@@ -53,18 +56,16 @@ class DjelmetricsRegistry:
                 "App '{}' doesn't have a '{}' metric.".format(app_label, metric_name)
             ) from e
 
-    def get_metrics(self, app_label=None):
-        """Return list of registered metric classes, optionally filtered on an app_label."""
+    def get_metrics(self, app_label: str | None = None, imp_name: str | None = None) -> Iterator[type]:
+        """Return list of registered metric classes, optionally filtered on an app_label and/or imp_name."""
         apps.check_apps_ready()
 
         app_labels = [app_label] if app_label else self.all_metrics.keys()
-        result = []
         for app_label in app_labels:
             app_metrics = self._get_metrics_for_app(app_label=app_label)
-            result.extend(list(app_metrics.values()))
-        return result
+            yield from app_metrics.values()
 
-    def _get_metrics_for_app(self, app_label):
+    def _get_metrics_for_app(self, app_label: str) -> dict[str, type]:
         if app_label not in self.all_metrics:
             raise LookupError(
                 "No metrics found in app with label '{}'.".format(app_label)

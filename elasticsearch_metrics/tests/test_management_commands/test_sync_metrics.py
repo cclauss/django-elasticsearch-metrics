@@ -16,7 +16,7 @@ class TestSyncMetrics(SimpleTestCase):
 
     def test_without_args(self):
         out, err = run_mgmt_command(sync_metrics.Command)
-        assert self.mock_sync_index_template.call_count == len(registry.get_metrics())
+        assert self.mock_sync_index_template.call_count == len(list(registry.get_metrics()))
         assert "Synchronized metrics." in out
 
     def test_with_invalid_app(self):
@@ -33,7 +33,7 @@ class TestSyncMetrics(SimpleTestCase):
 
     @skip('TODO: connection selection')
     def test_with_connection(self):
-        self.settings.DJELMETRICS_CONNECTIONS = {
+        self.settings.DJELMETRICS_IMPS = {
             "default": {"hosts": "localhost:9201"},
             "alternate": {"hosts": "localhost:9202"},
         }

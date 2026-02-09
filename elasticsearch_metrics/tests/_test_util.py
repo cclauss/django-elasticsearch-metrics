@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.test import SimpleTestCase
 
-from elasticsearch_metrics.djelmetrics_db import get_djelmetrics_connection
+from elasticsearch_metrics.djelmetrics_imps import each_djelmetrics_imp
 
 
 def mock_es6_save():
@@ -34,13 +34,16 @@ def run_mgmt_command(cmd: str | BaseCommand | type[BaseCommand], *args, **option
 
 # base class for testing with actual elasticsearch running
 class RealElasticTestCase(SimpleTestCase, abc.ABC):
-    def withFreshDjelme(self, connection_name: str):
-        # connection_name should be in elasticsearch_metrics.tests.settings.DJELMETRICS_CONNECTIONS
-        self.djelme_connection = get_djelmetrics_connection(connection_name)
-        self.djelme_connection.teardown_db()  # in case it already exists
-        self.djelme_connection.setup_db()  # in case it already exists
-        # TODO: patch settings/registry?
-        self.addCleanup(self.djelme_connection.teardown_db)
+    def setUp(self):
+        # TODO: prefix index names, avoid collisions across test runs
+        # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_IMPS
+        _djelme_connections = list(each_djelmetrics_imp())
+        for _conn in _djelme_connections:
+            _conn.teardown_db()  # in case it already exists
+        for _conn in _djelme_connections:
+            _conn.setup_db()
+        for _conn in _djelme_connections:
+            self.addCleanup(_conn.teardown_db)
 
 
 class MockSaveTestCase(SimpleTestCase, abc.ABC):

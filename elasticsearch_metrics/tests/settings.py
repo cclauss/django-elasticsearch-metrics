@@ -13,7 +13,7 @@ INSTALLED_APPS = [
 MIDDLEWARE_CLASSES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": "test_djelme"}}
 
-DJELMETRICS_CONNECTIONS = {
+DJELMETRICS_IMPS = {
     "elastic6foo": {
         "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic6",
         "host": os.environ.get("ELASTICSEARCH6_HOST"),

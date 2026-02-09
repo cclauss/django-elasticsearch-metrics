@@ -24,4 +24,4 @@ class TestCheckMetrics(SimpleTestCase):
     def test_exits_with_success(self):
         self.mock_check_index_template.return_value = True
         run_mgmt_command(check_metrics.Command)
-        assert self.mock_check_index_template.call_count == len(registry.get_metrics())
+        assert self.mock_check_index_template.call_count == len(list(registry.get_metrics()))

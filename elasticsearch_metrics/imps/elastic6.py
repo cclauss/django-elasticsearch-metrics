@@ -1,7 +1,10 @@
-"""elasticsearch_metrics.elastic6: store events and reports in elasticsearch 6
+"""elasticsearch_metrics.imps.elastic6: store events and reports in elasticsearch 6
 """
 
 from collections import ChainMap
+from collections.abc import Iterator
+import dataclasses
+import functools
 import logging
 
 from django.apps import apps
@@ -14,6 +17,7 @@ from elasticsearch6_dsl.index import Index
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
+from elasticsearch_metrics.protocols import ProtoDjelmetricsImp
 from elasticsearch_metrics.registry import registry
 
 # Fields should be imported from this module
@@ -276,3 +280,40 @@ class Metric(Document, BaseMetric):
         use the metric's template pattern as the default index
         """
         return index or cls._template
+
+
+@dataclasses.dataclass
+class DjelmeElastic6Imp(ProtoDjelmetricsImp):
+    """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)
+    """
+    imp_name: str
+    imp_config: dict[str, str]
+
+    @functools.cached_property
+    def elastic6_client(self):
+        # assumes `configure` was already called
+        return connections.get_connection(self.imp_name)
+
+    def configure(self) -> None:
+        connections.configure(**{self.imp_name: self.imp_config})
+
+    def setup_db(self) -> None:
+        for _metric_type in self._each_metric_type():
+            # TODO: logger.info
+            _metric_type.sync_index_template(using=self.elastic6_client)
+
+    def teardown_db(self) -> None:
+        for _metric_type in self._each_metric_type():
+            _indexname_wildcard = _metric_type._template
+            self.elastic6_client.indices.delete(index=_indexname_wildcard)
+            try:
+                self.elastic6_client.indices.delete_template(_indexname_wildcard)
+            except NotFoundError:
+                pass
+
+    def _each_metric_type(self) -> Iterator[type[Metric]]:
+        for _metric in registry.get_metrics(imp_name=self.imp_name):
+            yield _metric
+
+
+djelme_imp_from_config = DjelmeElastic6Imp  # for ProtoDjelmetricsImpModule

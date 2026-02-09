@@ -2,7 +2,7 @@ from __future__ import annotations
 import typing
 
 
-class ProtoDjelmetricsConnection(typing.Protocol):
+class ProtoDjelmetricsImp(typing.Protocol):
     def setup_db(self) -> None: ...
     def teardown_db(self) -> None: ...
     # def save_event_log(self, event_log: ProtoEventLog) -> None: ...
@@ -11,9 +11,12 @@ class ProtoDjelmetricsConnection(typing.Protocol):
 
 
 @typing.runtime_checkable
-class ProtoDjelmetricsImp(typing.Protocol):
+class ProtoDjelmetricsImpModule(typing.Protocol):
     @staticmethod
-    def djelme_imp_from_config(config: dict[str, str]) -> ProtoDjelmetricsImp:
+    def djelme_imp_from_config(
+        imp_name: str,
+        imp_config: dict[str, str],
+    ) -> ProtoDjelmetricsImp:
         ...
 
 

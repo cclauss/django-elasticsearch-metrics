@@ -50,7 +50,7 @@ class TestDjelmetricsRegistry(SimpleTestCase):
         assert AnotherMetric not in registry.get_metrics(app_label="dummy6app")
 
         with self.assertRaises(LookupError) as excinfo:
-            registry.get_metrics("notanapp")
+            list(registry.get_metrics("notanapp"))
         assert "No metrics found in app with label 'notanapp'." in excinfo.value.args[0]
 
     def test_get_metrics_excludes_abstract_metrics(self):
