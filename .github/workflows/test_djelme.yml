@@ -24,12 +24,12 @@ jobs:
 
 
   test:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         python: ['3.10', '3.11', '3.12', '3.13', '3.14']
         django: ['4.2', '5.1', '5.2']
         # TODO: elasticsearch: ['6', '7', '8', '9']
-    runs-on: ubuntu-20.04
     services:
       elasticsearch:
         image: elasticsearch:6.8.23
