@@ -72,3 +72,6 @@ class MockSaveTestCase(SimpleDjelmeTestCase):
         self.mocked_es6_save = self.enterContext(
             mock.patch("elasticsearch_metrics.imps.elastic6.Document.save"),
         )
+        self.mocked_es8_save = self.enterContext(
+            mock.patch("elasticsearch_metrics.imps.elastic8.Document.save"),
+        )

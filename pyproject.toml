@@ -1,6 +1,6 @@
 [project]
 name = "django-elasticsearch-metrics"
-version = "2026.0.0"
+version = "2025.0.0"
 description = "Django app for storing time-series metrics in Elasticsearch."
 authors = [
     {name = "CenterForOpenScience", email = "support@cos.io"}
@@ -38,8 +38,8 @@ classifiers = [
 
 [project.optional-dependencies]
 elastic6 = [ "elasticsearch6-dsl>=6.3.0,<7.0.0" ]
-# elastic8 = [ "elasticsearch8>=8.0.0,<9.0.0" ]
-# elastic9 = [ "elasticsearch9>=9.0.0,<10.0.0" ]
+elastic8 = [ "elasticsearch8>=8.0.0,<9.0.0" ]
+elastic9 = [ "elasticsearch9>=9.0.0,<10.0.0" ]
 
 [project.urls]
 repository = "http://github.com/CenterForOpenScience/django-elasticsearch-metrics"
