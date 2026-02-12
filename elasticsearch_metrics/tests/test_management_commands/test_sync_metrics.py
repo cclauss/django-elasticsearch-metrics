@@ -35,7 +35,7 @@ class TestSyncMetrics(SimpleDjelmeTestCase):
 
     @skip("TODO: connection selection")
     def test_with_connection(self):
-        self.settings.DJELMETRICS_IMPS = {
+        self.settings.DJELMETRICS_TIMESERIES_IMPS = {
             "default": {"hosts": "localhost:9201"},
             "alternate": {"hosts": "localhost:9202"},
         }

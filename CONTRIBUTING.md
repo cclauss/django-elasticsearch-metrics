@@ -30,22 +30,10 @@ konch
 To run tests against the full environment matrix (all supported Python
 and Django versions), we use `tox`.
 
-NOTE: You'll need both the `python2.7` and `python3.6` interpreters installed.
-You can do this with pyenv and pyenv-virtualenv using the following steps:
+NOTE: will skip Python versions not found in this environment
+-- to run all python versions, need to install them
 
-```
-# Install python2.7 and python3.6
-pyenv install 2.7.15
-pyenv install 3.6.5
-
-# Create a new Python 3.6 virtualenv with pyenv-virtualenv
-pyenv virtualenv django-elasticsearch-metrics 3.6.5
-
-# Allow usage of your virtualenv, python2.7 and python3.6 simultaneously
-echo "django-elasticsearch-metrics\n2.7.15\n3.6.5" > .python-version
-```
-
-Then run the tests with tox:
+Run the tests with tox:
 
 ```
 tox

@@ -2,26 +2,23 @@ from __future__ import annotations
 from collections.abc import Iterator
 import importlib
 
-from django.conf import settings
-
 from elasticsearch_metrics.protocols import (
     ProtoDjelmetricsImp,
     ProtoDjelmetricsImpModule,
 )
 
 __all__ = (
-    "each_djelmetrics_imp",
-    "get_djelmetrics_imp",
-    "ProtoDjelmetricsImp",
+    "each_timeseries_imp",
+    "get_timeseries_imp",
 )
 
 
-def each_djelmetrics_imp() -> Iterator[ProtoDjelmetricsImp]:
+def each_timeseries_imp() -> Iterator[ProtoDjelmetricsImp]:
     for _imp_name in getattr(settings, "DJELMETRICS_IMPS", ()):
-        yield get_djelmetrics_imp(_imp_name)
+        yield get_timeseries_imp(_imp_name)
 
 
-def get_djelmetrics_imp(imp_name: str) -> ProtoDjelmetricsImp:
+def get_timeseries_imp(imp_name: str) -> ProtoDjelmetricsImp:
     try:
         _raw_imp_config = settings.DJELMETRICS_IMPS[imp_name]
     except KeyError as _error:

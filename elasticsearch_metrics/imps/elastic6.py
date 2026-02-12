@@ -3,7 +3,6 @@
 from collections import ChainMap
 from collections.abc import Iterator
 import dataclasses
-import functools
 import logging
 
 from django.apps import apps
@@ -16,7 +15,7 @@ from elasticsearch6_dsl.index import Index
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
-from elasticsearch_metrics.protocols import ProtoDjelmetricsImp
+from elasticsearch_metrics.protocols import ProtoTimeseriesImp
 from elasticsearch_metrics.registry import registry
 
 # Fields should be imported from this module
@@ -143,7 +142,7 @@ class BaseMetric(metaclass=MetricMeta):
     @classmethod
     def sync_index_template(cls, using=None):
         """Sync the index template for this metric in Elasticsearch."""
-        index_template = cls.get_index_template()
+        index_template = cls.get_timeseries_index_template()
         index_template.document(cls)
         signals.pre_index_template_create.send(
             cls, index_template=index_template, using=using
@@ -176,7 +175,7 @@ class BaseMetric(metaclass=MetricMeta):
             ) from client_error
         else:
             current_data = list(template.values())[0]
-            template_data = cls.get_index_template().to_dict()
+            template_data = cls.get_timeseries_index_template().to_dict()
 
             mappings_in_sync = current_data["mappings"] == template_data["mappings"]
             if "settings" in current_data and "index" in current_data["settings"]:
@@ -218,7 +217,7 @@ class BaseMetric(metaclass=MetricMeta):
             return True
 
     @classmethod
-    def get_index_template(cls):
+    def get_timeseries_index_template(cls):
         """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
         return cls._index.as_template(
             template_name=cls._template_name, pattern=cls._template_pattern
@@ -278,13 +277,13 @@ class Metric(Document, BaseMetric):
 
 
 @dataclasses.dataclass
-class DjelmeElastic6Imp(ProtoDjelmetricsImp):
+class DjelmeElastic6Imp(ProtoTimeseriesImp):
     """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)"""
 
     imp_name: str
     imp_config: dict[str, str]
 
-    @functools.cached_property
+    @property
     def elastic6_client(self):
         # assumes `configure` was already called
         return connections.get_connection(self.imp_name)
@@ -292,12 +291,12 @@ class DjelmeElastic6Imp(ProtoDjelmetricsImp):
     def configure(self) -> None:
         connections.configure(**{self.imp_name: self.imp_config})
 
-    def setup_db(self) -> None:
+    def setup_timeseries_indexes(self) -> None:
         for _metric_type in self._each_metric_type():
             # TODO: logger.info
             _metric_type.sync_index_template(using=self.elastic6_client)
 
-    def teardown_db(self) -> None:
+    def teardown_timeseries_indexes(self) -> None:
         for _metric_type in self._each_metric_type():
             _indexname_wildcard = _metric_type._template_pattern
             _templatename = _metric_type._template_name

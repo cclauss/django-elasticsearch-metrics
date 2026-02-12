@@ -28,13 +28,13 @@ class Command(BaseCommand):
         style = color_style()
         connection = options["connection"]
         if options["app_label"]:
-            if options["app_label"] not in registry.all_metrics:
+            if options["app_label"] not in registry.all_recordtypes:
                 raise CommandError(
                     "No metrics found for app '{}'".format(options["app_label"])
                 )
             app_labels = [options["app_label"]]
         else:
-            app_labels = registry.all_metrics.keys()
+            app_labels = registry.all_recordtypes.keys()
 
         out_of_sync_count = 0
         self.stdout.write("Checking for outdated index templates...")

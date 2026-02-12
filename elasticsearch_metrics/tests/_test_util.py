@@ -5,7 +5,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.test import SimpleTestCase
 
-from elasticsearch_metrics.djelmetrics_imps import each_djelmetrics_imp
+from elasticsearch_metrics.timeseries_imps import each_timeseries_imp
 
 
 class SimpleDjelmeTestCase(SimpleTestCase):
@@ -57,14 +57,14 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     def setup_djelme_imps(self):
         # TODO: prefix index names, avoid collisions across test runs
-        # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_IMPS
+        # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_TIMESERIES_IMPS
         self.teardown_djelme_imps()  # in case any already exist
-        for _imp in each_djelmetrics_imp():
-            _imp.setup_db()
+        for _imp in each_timeseries_imp():
+            _imp.setup_timeseries_indexes()
 
     def teardown_djelme_imps(self):
-        for _imp in each_djelmetrics_imp():
-            _imp.teardown_db()
+        for _imp in each_timeseries_imp():
+            _imp.teardown_timeseries_indexes()
 
 
 class MockSaveTestCase(SimpleDjelmeTestCase):

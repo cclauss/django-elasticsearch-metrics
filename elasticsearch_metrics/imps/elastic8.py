@@ -1,5 +1,14 @@
 """elasticsearch_metrics.elastic8: store events and reports in elasticsearch 8
+
+>>> from elasticsearch_metrics.imps import elastic8 as djelme
+>>> class MyCountableEvent(djelme.EventLog):
+...     
 """
+__all__ = (
+    'TimeseriesRecord',
+    'EventLog',
+    'PeriodicReport',
+)
 from collections import ChainMap
 import datetime
 import logging
@@ -25,101 +34,117 @@ DEFAULT_DATE_FORMAT = "%Y.%m.%d"
 logger = logging.getLogger(__name__)
 
 
-class MetricMeta(IndexMeta):
-    """Metaclass for the base `Metric` class."""
-
-    def __new__(mcls, name, bases, attrs):  # noqa: B902
-
-        meta = attrs.get("Meta", None)
-        module = attrs.get("__module__")
-
-        new_cls = super(MetricMeta, mcls).__new__(mcls, name, bases, attrs)
-        # Also ensure initialization is only performed for subclasses of Metric
-        # (excluding Metric class itself).
-        if not any(
-            b for b in bases if isinstance(b, MetricMeta) and b is not BaseMetric
-        ):
-            return new_cls
-
-        template_name = getattr(meta, "template_name", None)
-        template = getattr(meta, "template", None)
-        abstract = getattr(meta, "abstract", False)
-
-        app_label = getattr(meta, "app_label", None)
-        # Look for an application configuration to attach the model to.
-        app_config = apps.get_containing_app_config(module)
-        if app_label is None:
-            if app_config is None:
-                if not abstract:
-                    raise RuntimeError(
-                        "Metric class %s.%s doesn't declare an explicit "
-                        "app_label and isn't in an application in "
-                        "INSTALLED_APPS." % (module, name)
-                    )
-            else:
-                app_label = app_config.label
-
-        if not template_name or not template:
-            metric_name = new_cls.__name__.lower()
-            # If template_name not specified in class Meta,
-            # compute it as <app label>_<lowercased class name>
-            if not template_name:
-                template_name = "{}_{}".format(app_label, metric_name)
-            # template is <app label>_<lowercased class name>-*
-            template = template or "{}_{}_*".format(app_label, metric_name)
-
-        new_cls._template_name = template_name
-        new_cls._template = template
-        # Abstract base metrics can't be instantiated and don't appear in
-        # the list of metrics for an app.
-        if not abstract:
-            registry.register(app_label, new_cls)
-        return new_cls
-
-    # Override IndexMeta.construct_index so that
-    # a new Index is created for every metric class
-    # and Index attrs are inherited
+class IndexInheritanceMeta(IndexMeta):
+    # override elasticsearch8.document.IndexMeta.construct_index
+    # so Index attrs are inherited
+    # and each subtype gets their own index (`opts` is never None)
     @classmethod
     def construct_index(cls, opts, bases):
         parent_configs = [
             base._index.to_dict() for base in bases if hasattr(base, "_index")
         ]
-        if opts:
-            index_config = ChainMap(ReadonlyAttrMap(opts), *parent_configs)
-        else:
-            index_config = ChainMap(*parent_configs)
-
-        i = Index(
-            index_config.get("name", "*"),
-            using=index_config.get("using", "default"),
+        chained_opts = (
+            ChainMap(ReadonlyAttrMap(opts), *parent_configs)
+            if opts
+            else ChainMap(*parent_configs)
         )
-        i.settings(**index_config.get("settings", {}))
-        i.aliases(**index_config.get("aliases", {}))
-        for a in index_config.get("analyzers", ()):
-            i.analyzer(a)
-        return i
+        # since chained_opts is not None, IndexMeta.construct_index won't reuse the index from a parent type
+        return super().construct_index(chained_opts, bases)
 
 
-# We need this intermediate BaseMetric class so that
-# we can run MetricMeta ahead of IndexMeta
-class BaseMetric(metaclass=MetricMeta):
-    """Base metric class with which to define custom metric classes.
+# class TimeseriesIndexMeta(IndexMeta):
+#     """Metaclass for the base `TimeseriesRecord` class."""
+# 
+#     def __new__(mcls, name, bases, attrs):  # noqa: B902
+#         new_cls = super().__new__(mcls, name, bases, attrs)
+# 
+#         meta = attrs.get("Meta", None)
+#         module = attrs.get("__module__")
+# 
+#         # Also ensure initialization is only performed for subclasses of TimeseriesRecord
+#         # (excluding TimeseriesRecord class itself).
+#         if isinstance(new_cls, TimeseriesIndexMeta) 
+#         if any(
+#             isinstance(b, TimeseriesIndexMeta) and (b is not BaseTimeseriesDoc)
+#             for b in bases
+#         ):
+#             return new_cls
+# 
+# 
+#     def _register_timeseries_indexset(self, ...):
+#         template_name = getattr(meta, "template_name", None)
+#         template = getattr(meta, "template", None)
+#         abstract = getattr(meta, "abstract", False)
+# 
+#         app_label = getattr(meta, "app_label", None)
+#         # Look for an application configuration to attach the model to.
+#         app_config = apps.get_containing_app_config(module)
+#         if app_label is None:
+#             if app_config is None:
+#                 if not abstract:
+#                     raise RuntimeError(
+#                         "TimeseriesRecord class %s.%s doesn't declare an explicit "
+#                         "app_label and isn't in an application in "
+#                         "INSTALLED_APPS." % (module, name)
+#                     )
+#             else:
+#                 app_label = app_config.label
+# 
+#         if not template_name or not template:
+#             metric_name = new_cls.__name__.lower()
+#             # If template_name not specified in class Meta,
+#             # compute it as <app label>_<lowercased class name>
+#             if not template_name:
+#                 template_name = "{}_{}".format(app_label, metric_name)
+#             # template is <app label>_<lowercased class name>-*
+#             template = template or "{}_{}_*".format(app_label, metric_name)
+# 
+#         new_cls._template_name = template_name
+#         new_cls._template_pattern = template
+#         # Abstract base metrics can't be instantiated and don't appear in
+#         # the list of metrics for an app.
+#         if not abstract:
+#             registry.register(app_label, new_cls)
+#         return new_cls
+# 
+#     # Override IndexMeta.construct_index so that
+#     # a new Index is created for every metric class
+#     # and Index attrs are inherited
+#     @classmethod
+#     def construct_index(cls, opts, bases):
+#         parent_configs = [
+#             base._index.to_dict() for base in bases if hasattr(base, "_index")
+#         ]
+#         if opts:
+#             index_config = ChainMap(ReadonlyAttrMap(opts), *parent_configs)
+#         else:
+#             index_config = ChainMap(*parent_configs)
+# 
+#         i = Index(
+#             index_config.get("name", "*"),
+#             using=index_config.get("using", "default"),
+#         )
+#         i.settings(**index_config.get("settings", {}))
+#         i.aliases(**index_config.get("aliases", {}))
+#         for a in index_config.get("analyzers", ()):
+#             i.analyzer(a)
+#         return i
+# 
+# 
+
+class TimeseriesRecord(Document, metaclass=IndexInheritanceMeta):
+    """Base document
 
     Example usage:
-
-    .. code-block:: python
-
-        from elasticsearch_metrics import metrics
-
-
-        class PageView(metrics.Metric):
-            user_id = metrics.Integer(index=True, doc_values=True)
-
-            class Index:
-                settings = {
-                    "number_of_shards": 2,
-                    "refresh_interval": "5s",
-                }
+    >>> from elasticsearch_metrics.imps.elastic8 import TimeseriesEvent
+    >>> class PageView(TimeseriesEvent):
+    ...     page_route_key: str
+    ...
+    ...     class Index:
+    ...         settings = {
+    ...             "number_of_shards": 2,
+    ...             "refresh_interval": "5s",
+    ...         }
     """
 
     timestamp = Date(doc_values=True, required=True)
@@ -127,10 +152,25 @@ class BaseMetric(metaclass=MetricMeta):
     class Meta:
         source = MetaField(enabled=False)
 
+    def __init_subclass__(cls, **kwargs):
+        # (sidenote: simpler? way to register subclasses, compared to metaclasses)
+        super().__init_subclass__(**kwargs)
+        # TODO: register cls with metrics registry
+#         if not abstract:
+#             registry.register(app_label, cls)
+
+    @classmethod
+    def init(cls, index=None, using=None):
+        """Create the index and populate the mappings in elasticsearch."""
+        cls.sync_index_template(using=using)
+        return super().init(index=index or cls.get_timeseries_index_name(), using=using)
+
+
+    ######
     @classmethod
     def sync_index_template(cls, using=None):
         """Sync the index template for this metric in Elasticsearch."""
-        index_template = cls.get_index_template()
+        index_template = cls.get_timeseries_index_template()
         index_template.document(cls)
         signals.pre_index_template_create.send(
             cls, index_template=index_template, using=using
@@ -163,7 +203,7 @@ class BaseMetric(metaclass=MetricMeta):
             ) from client_error
         else:
             current_data = list(template.values())[0]
-            template_data = cls.get_index_template().to_dict()
+            template_data = cls.get_timeseries_index_template().to_dict()
 
             mappings_in_sync = current_data["mappings"] == template_data["mappings"]
             if "settings" in current_data and "index" in current_data["settings"]:
@@ -205,15 +245,16 @@ class BaseMetric(metaclass=MetricMeta):
             return True
 
     @classmethod
-    def get_index_template(cls):
+    def get_timeseries_index_template(cls):
         """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
         return cls._index.as_template(
-            template_name=cls._template_name, pattern=cls._template
+            template_name=cls._template_name, pattern=cls._template_pattern
         )
 
     @classmethod
-    def get_index_name(cls, date=None):
-        date = date or timezone.now().date()
+    def get_timeseries_index_name(cls, datestamp: datetime.date | None = None) -> str:
+        datestamp = datestamp or timezone.now().date()
+        # TODO: configure format on cls, fallback to app-wide setting
         dateformat = getattr(
             settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
         )
@@ -227,18 +268,9 @@ class BaseMetric(metaclass=MetricMeta):
         :param datetime timestamp: Timestamp for the metric.
         """
         instance = cls(timestamp=timestamp, **kwargs)
-        index = cls.get_index_name(timestamp)
+        index = cls.get_timeseries_index_name(timestamp)
         instance.save(index=index)
         return instance
-
-
-class Metric(Document, BaseMetric):
-    __doc__ = BaseMetric.__doc__
-
-    @classmethod
-    def init(cls, index=None, using=None):
-        """Create the index and populate the mappings in elasticsearch."""
-        return super(Metric, cls).init(index=index or cls.get_index_name(), using=using)
 
     def save(self, using=None, index=None, validate=True, **kwargs):
         """Same as `Document.save`, except will save into the index determined
@@ -246,11 +278,11 @@ class Metric(Document, BaseMetric):
         """
         self.timestamp = self.timestamp or timezone.now()
         if not index:
-            index = self.get_index_name(date=self.timestamp)
+            index = self.get_timeseries_index_name(date=self.timestamp)
 
         cls = self.__class__
         signals.pre_save.send(cls, instance=self, using=using, index=index)
-        ret = super(Metric, self).save(
+        ret = super(TimeseriesRecord, self).save(
             using=using, index=index, validate=validate, **kwargs
         )
         signals.post_save.send(cls, instance=self, using=using, index=index)
@@ -261,15 +293,16 @@ class Metric(Document, BaseMetric):
         """Overrides Document._default_index so that .search, .get, etc.
         use the metric's template pattern as the default index
         """
-        return index or cls._template
+        return index or cls._template_pattern
 
 
-class EventLog(BaseMetric):
+class EventLog(TimeseriesRecord):
     timestamp: datetime.datetime
     event_label: str
+    event_tags: list[str]
 
 
-class PeriodicReport(BaseMetric):
+class PeriodicReport(TimeseriesRecord):
     timestamp: datetime.datetime
     report_label: str
     report_coverage: ...  # timespan

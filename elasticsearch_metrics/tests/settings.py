@@ -13,17 +13,23 @@ INSTALLED_APPS = [
 MIDDLEWARE_CLASSES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": "test_djelme"}}
 
-DJELMETRICS_IMPS = {
-    "default": {
-        "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic6",
-        "hosts": os.environ.get("ELASTICSEARCH6_HOST"),
-    },
-    "elastic8foo": {
-        "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic8",
-        "hosts": os.environ.get("ELASTICSEARCH8_HOST"),
-    },
-    "elastic8bar": {
-        "DJELMETRICS_IMP": "elasticsearch_metrics.imps.elastic8",
-        "hosts": os.environ.get("ELASTICSEARCH8_HOST"),
-    },
+DJELMETRICS_TIMESERIES_IMPS = {
+    "default": [
+        "elasticsearch_metrics.imps.elastic6",
+        {
+            "hosts": os.environ.get("ELASTICSEARCH6_HOST"),
+        },
+    ],
+    "elastic8foo": [
+        "elasticsearch_metrics.imps.elastic8",
+        {
+            "hosts": os.environ.get("ELASTICSEARCH8_HOST"),
+        },
+    ],
+    "elastic8bar": [
+        "elasticsearch_metrics.imps.elastic8",
+        {
+            "hosts": os.environ.get("ELASTICSEARCH8_HOST"),
+        },
+    ],
 }

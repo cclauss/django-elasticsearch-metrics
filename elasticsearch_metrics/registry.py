@@ -1,39 +1,79 @@
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from collections.abc import Iterator
+import dataclasses
+import functools
+import importlib
 
 from django.apps import apps
 
+from elasticsearch_metrics.protocols import (
+    ProtoTimeseriesImp,
+    ProtoTimeseriesRecord,
+    ProtoTimeseriesImpModule,
+)
 
-class DjelmetricsRegistry:
-    """DjelmetricsRegistry keeping track of Metric classes (similar to how
+
+@dataclasses.dataclass
+class TimeseriesTypeRegistry:
+    """TimeseriesTypeRegistry keeping track of TimeseriesRecord classes (similar to how
     django.apps.registry.Apps keeps track of Model classes).
+
+    Every time a TimeseriesRecord subtype is defined, TimeseriesRecord.__init_subclass__
+    calls timeseries_type_registry.register which creates an entry in all_recordtypes.
     """
 
-    all_metrics: dict[str, dict[str, type]]
+    # mapping of app labels => record-type names => record classes
+    all_recordtypes: dict[str, dict[str, type]] = dataclasses.field(
+        default_factory=lambda: defaultdict(dict),
+    )
 
-    def __init__(self) -> None:
-        # Mapping of app labels => metric names => metric classes
-        # Every time a metric is imported, MetricMeta.__new__
-        # calls registry.register which creates
-        # an entry in all_metrics.
-        self.all_metrics = defaultdict(OrderedDict)
+    # mapping of imp names => (imp module path, imp config)
+    configured_imps: dict[str, tuple[str, dict[str, str]]] = dataclasses.field(
+        default_factory=dict,
+    )
 
     # similar to apps.register_model
-    def register(self, app_label: str, metric_cls: type) -> None:
-        """Add a Metric to the registry."""
-        app_metrics = self.all_metrics[app_label]
-        metric_name = metric_cls.__name__.lower()
-        if metric_name in app_metrics:
+    def register_recordtype(
+        self, app_label: str, record_cls: type[ProtoTimeseriesRecord]
+    ) -> None:
+        """Add a record type (TimeseriesRecord  to the registry."""
+        app_recordtypes = self.all_recordtypes[app_label]
+        recordtype_name = record_cls.__name__.lower()
+        if recordtype_name in app_recordtypes:
             # Raise an error for conflicting metrics (same behavior as apps.register_model)
             raise RuntimeError(
                 "Conflicting '{}' metrics in application '{}': {} and {}.".format(
-                    metric_name, app_label, app_metrics[metric_name], metric_cls
+                    recordtype_name,
+                    app_label,
+                    app_recordtypes[recordtype_name],
+                    record_cls,
                 )
             )
-        app_metrics[metric_name] = metric_cls
+        app_recordtypes[recordtype_name] = record_cls
+
+    def register_imp(
+        self, imp_name: str, imp_module_path: str, imp_config: dict[str, str]
+    ) -> None:
+        if imp_name in self.configured_imps:
+            raise RuntimeError(f"duplicate imps named {imp_name!r}")
+        self.configured_imps[imp_name] = (imp_module_path, imp_config)
+
+    def each_imp(self) -> Iterator[ProtoTimeseriesImp]:
+        for _imp_name in self.configured_imps.keys():
+            yield self.get_imp(_imp_name)
+
+    def get_imp(self, imp_name: str) -> ProtoTimeseriesImp:
+        try:
+            _imp_module_path, _imp_config = self.configured_imps[imp_name]
+        except KeyError as _e:
+            raise LookupError(f"unknown imp {imp_name!r}") from _e
+        _mod = _import_imp_module(_imp_module_path)
+        return _mod.djelme_imp_from_config(imp_name, _imp_config)
 
     # similar to apps.get_model
-    def get_metric(self, app_label: str, metric_name: str | None = None) -> type:
+    def get_recordtype(
+        self, app_label: str, recordtype_name: str | None = None
+    ) -> type:
         """Return the metric matching the given app_label and model_name.
 
         As a shortcut, app_label may be in the form <app_label>.<model_name>.
@@ -46,34 +86,47 @@ class DjelmetricsRegistry:
         """
         apps.check_apps_ready()
 
-        if metric_name is None:
-            app_label, metric_name = app_label.split(".")
+        if recordtype_name is None:
+            app_label, recordtype_name = app_label.split(".")
 
-        app_metrics = self._get_metrics_for_app(app_label=app_label)
+        app_recordtypes = self._get_recordtypes_for_app(app_label=app_label)
         try:
-            return app_metrics[metric_name.lower()]
+            return app_recordtypes[recordtype_name.lower()]
         except KeyError as e:
             raise LookupError(
-                "App '{}' doesn't have a '{}' metric.".format(app_label, metric_name)
+                "App '{}' doesn't have a '{}' metric.".format(
+                    app_label, recordtype_name
+                )
             ) from e
 
-    def get_metrics(
-        self, app_label: str | None = None, imp_name: str | None = None
+    def get_recordtypes(
+        self, app_label: str = "", imp_name: str | None = None
     ) -> Iterator[type]:
-        """Return list of registered metric classes, optionally filtered on an app_label and/or imp_name."""
+        """Iterate registered metric classes, optionally filtered on an app_label and/or imp_name."""
         apps.check_apps_ready()
 
-        app_labels = [app_label] if app_label else self.all_metrics.keys()
+        app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for app_label in app_labels:
-            app_metrics = self._get_metrics_for_app(app_label=app_label)
-            yield from app_metrics.values()
+            app_recordtypes = self._get_recordtypes_for_app(app_label=app_label)
+            yield from app_recordtypes.values()
 
-    def _get_metrics_for_app(self, app_label: str) -> dict[str, type]:
-        if app_label not in self.all_metrics:
+    def _get_recordtypes_for_app(self, app_label: str) -> dict[str, type]:
+        if app_label not in self.all_recordtypes:
             raise LookupError(
                 "No metrics found in app with label '{}'.".format(app_label)
             )
-        return self.all_metrics[app_label]
+        return self.all_recordtypes[app_label]
 
 
-registry = DjelmetricsRegistry()
+@functools.lru_cache
+def _import_imp_module(imp_module_path: str) -> ProtoTimeseriesImpModule:
+    try:
+        _imp_module = importlib.import_module(imp_module_path)
+    except ImportError as _error:
+        raise ValueError(f"could not import {imp_module_path!r}") from _error
+    assert isinstance(_imp_module, ProtoTimeseriesImpModule)
+    return _imp_module
+
+
+timeseries_type_registry = TimeseriesTypeRegistry()
+registry = timeseries_type_registry  # convenience?
