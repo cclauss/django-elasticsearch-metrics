@@ -17,7 +17,7 @@ class TestSyncMetrics(SimpleDjelmeTestCase):
     def test_without_args(self):
         out, err = self.run_mgmt_command(sync_metrics.Command)
         assert self.mock_sync_index_template.call_count == len(
-            list(registry.get_metrics())
+            list(registry.each_recordtype())
         )
         assert "Synchronized metrics." in out
 
@@ -36,8 +36,8 @@ class TestSyncMetrics(SimpleDjelmeTestCase):
     @skip("TODO: connection selection")
     def test_with_connection(self):
         self.settings.DJELMETRICS_TIMESERIES_IMPS = {
-            "default": {"hosts": "localhost:9201"},
-            "alternate": {"hosts": "localhost:9202"},
+            "default": ['elasticsearch_metrics.imps.elastic6', {"hosts": "localhost:9201"}],
+            "alternate": ['elasticsearch_metrics.imps.elastic8', {"hosts": "localhost:9202"}],
         }
         out, err = self.run_mgmt_command(
             sync_metrics.Command, "--connection", "alternate"

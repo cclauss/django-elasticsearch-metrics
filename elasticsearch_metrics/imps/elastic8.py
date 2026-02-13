@@ -1,8 +1,14 @@
 """elasticsearch_metrics.elastic8: store events and reports in elasticsearch 8
 
->>> from elasticsearch_metrics.imps import elastic8 as djelme
->>> class MyCountableEvent(djelme.EventLog):
-...     
+>>> from elasticsearch_metrics.imps.elastic8 import EventLog
+>>> class TheThingHappened(EventLog):
+...     intensity: int
+...
+...     class Index:  # elasticsearch index settings
+...         settings = {
+...             "number_of_shards": 2,
+...             "refresh_interval": "5s",
+...         }
 """
 __all__ = (
     'TimeseriesRecord',
@@ -10,16 +16,17 @@ __all__ = (
     'PeriodicReport',
 )
 from collections import ChainMap
+import dataclasses
 import datetime
 import logging
+import typing
 
-from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
-from elasticsearch8_dsl import Document, connections
-from elasticsearch8_dsl.document import IndexMeta, MetaField
-from elasticsearch8_dsl.index import Index
+from elasticsearch8.dsl import Document, connections
+from elasticsearch8.dsl.document import MetaField
+from elasticsearch8.dsl.index import Index
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
@@ -34,23 +41,24 @@ DEFAULT_DATE_FORMAT = "%Y.%m.%d"
 logger = logging.getLogger(__name__)
 
 
-class IndexInheritanceMeta(IndexMeta):
-    # override elasticsearch8.document.IndexMeta.construct_index
-    # so Index attrs are inherited
-    # and each subtype gets their own index (`opts` is never None)
-    @classmethod
-    def construct_index(cls, opts, bases):
-        parent_configs = [
-            base._index.to_dict() for base in bases if hasattr(base, "_index")
-        ]
-        chained_opts = (
-            ChainMap(ReadonlyAttrMap(opts), *parent_configs)
-            if opts
-            else ChainMap(*parent_configs)
-        )
-        # since chained_opts is not None, IndexMeta.construct_index won't reuse the index from a parent type
-        return super().construct_index(chained_opts, bases)
-
+# TODO: do index inheritance without metaclasses
+# class IndexInheritanceMeta(IndexMeta):
+#     # override elasticsearch8.document.IndexMeta.construct_index
+#     # so Index attrs are inherited
+#     # and each subtype gets their own index (`opts` is never None)
+#     @classmethod
+#     def construct_index(cls, opts, bases):
+#         parent_configs = [
+#             base._index.to_dict() for base in bases if hasattr(base, "_index")
+#         ]
+#         chained_opts = (
+#             ChainMap(ReadonlyAttrMap(opts), *parent_configs)
+#             if opts
+#             else ChainMap(*parent_configs)
+#         )
+#         # since chained_opts is not None, IndexMeta.construct_index won't reuse the index from a parent type
+#         return super().construct_index(chained_opts, bases)
+# 
 
 # class TimeseriesIndexMeta(IndexMeta):
 #     """Metaclass for the base `TimeseriesRecord` class."""
@@ -104,7 +112,7 @@ class IndexInheritanceMeta(IndexMeta):
 #         # Abstract base metrics can't be instantiated and don't appear in
 #         # the list of metrics for an app.
 #         if not abstract:
-#             registry.register(app_label, new_cls)
+#             registry.register_recordtype(app_label, new_cls)
 #         return new_cls
 # 
 #     # Override IndexMeta.construct_index so that
@@ -132,32 +140,22 @@ class IndexInheritanceMeta(IndexMeta):
 # 
 # 
 
-class TimeseriesRecord(Document, metaclass=IndexInheritanceMeta):
+class TimeseriesRecord(Document):
     """Base document
-
-    Example usage:
-    >>> from elasticsearch_metrics.imps.elastic8 import TimeseriesEvent
-    >>> class PageView(TimeseriesEvent):
-    ...     page_route_key: str
-    ...
-    ...     class Index:
-    ...         settings = {
-    ...             "number_of_shards": 2,
-    ...             "refresh_interval": "5s",
-    ...         }
     """
 
     timestamp = Date(doc_values=True, required=True)
 
     class Meta:
         source = MetaField(enabled=False)
+        abstract = True
 
     def __init_subclass__(cls, **kwargs):
         # (sidenote: simpler? way to register subclasses, compared to metaclasses)
         super().__init_subclass__(**kwargs)
         # TODO: register cls with metrics registry
-#         if not abstract:
-#             registry.register(app_label, cls)
+        if not cls.get_meta_setting('abstract'):
+            registry.register_recordtype(cls.get_app_label(), cls)
 
     @classmethod
     def init(cls, index=None, using=None):
@@ -165,13 +163,55 @@ class TimeseriesRecord(Document, metaclass=IndexInheritanceMeta):
         cls.sync_index_template(using=using)
         return super().init(index=index or cls.get_timeseries_index_name(), using=using)
 
+    @classmethod
+    def get_timeseries_index_template(cls):
+        """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
+        return cls._index.as_template(
+            template_name=cls._template_name, pattern=cls._template_pattern
+        )
+
+    @classmethod
+    def get_template_pattern(cls) -> str:
+        return f"{cls.get_template_name()}_*"
+
+    @classmethod
+    def get_template_pattern(cls) -> str:
+        if not template_name:
+            metric_name = new_cls.__name__.lower()
+            # If template_name not specified in class Meta,
+            # compute it as <app label>_<lowercased class name>
+            template_name = f"{app_label}_{metric_name}"
+
+        new_cls._template_name = template_name
+
+    @classmethod
+    def get_app_label(cls) -> str:
+        _app_label = self.get_meta_setting("app_label")
+        if _app_label is None:
+            # Look for an application configuration to attach the model to.
+            app_config = apps.get_containing_app_config(module)
+            if app_config is None:
+                if not self.get_meta_setting("abstract"):
+                    raise RuntimeError(
+                        "Metric class %s.%s doesn't declare an explicit "
+                        "app_label and isn't in an application in "
+                        "INSTALLED_APPS." % (module, name)
+                    )
+            else:
+                _app_label = app_config.label
+        assert isinstance(_app_label, str)
+        return _app_label
+
+    @classmethod
+    def get_meta_setting(cls, setting_name: str) -> typing.Any:
+        _meta_settings_cls = getattr(cls, 'Meta', None)
+        return getattr(_meta_settings_cls, setting_name, None)
 
     ######
     @classmethod
     def sync_index_template(cls, using=None):
         """Sync the index template for this metric in Elasticsearch."""
         index_template = cls.get_timeseries_index_template()
-        index_template.document(cls)
         signals.pre_index_template_create.send(
             cls, index_template=index_template, using=using
         )
@@ -245,13 +285,6 @@ class TimeseriesRecord(Document, metaclass=IndexInheritanceMeta):
             return True
 
     @classmethod
-    def get_timeseries_index_template(cls):
-        """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
-        return cls._index.as_template(
-            template_name=cls._template_name, pattern=cls._template_pattern
-        )
-
-    @classmethod
     def get_timeseries_index_name(cls, datestamp: datetime.date | None = None) -> str:
         datestamp = datestamp or timezone.now().date()
         # TODO: configure format on cls, fallback to app-wide setting
@@ -306,3 +339,43 @@ class PeriodicReport(TimeseriesRecord):
     timestamp: datetime.datetime
     report_label: str
     report_coverage: ...  # timespan
+
+
+@dataclasses.dataclass
+class DjelmeElastic8Imp(ProtoTimeseriesImp):
+    """DjelmeElastic8Imp: the elastic8 implementation of djelme (for use by generic djelme code)"""
+
+    imp_name: str
+    imp_config: dict[str, str]
+    namespace_prefix: str = ""
+
+    @property
+    def elastic8_client(self):
+        # assumes `configure` was already called
+        return connections.get_connection(self.imp_name)
+
+    def configure(self) -> None:
+        connections.configure(**{self.imp_name: self.imp_config})
+
+    def setup_timeseries_indexes(self) -> None:
+        for _metric_type in self._each_metric_type():
+            # TODO: logger.info
+            _metric_type.sync_index_template(using=self.elastic6_client)
+
+    def teardown_timeseries_indexes(self) -> None:
+        for _metric_type in self._each_metric_type():
+            _indexname_wildcard = _metric_type._template_pattern
+            _templatename = _metric_type._template_name
+            self.elastic6_client.indices.delete(index=_indexname_wildcard)
+            try:
+                self.elastic6_client.indices.delete_template(_templatename)
+            except NotFoundError:
+                pass
+
+    def _each_metric_type(self) -> Iterator[type[Metric]]:
+        for _metric in registry.each_recordtype(imp_name=self.imp_name):
+            assert issubclass(_metric, Metric)
+            yield _metric
+
+
+djelme_imp_from_config = DjelmeElastic8Imp  # for ProtoDjelmetricsImpModule

@@ -38,7 +38,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 "Syncing metrics for app: '{}'".format(app_label), style.MIGRATE_HEADING
             )
-            for metric in registry.get_metrics(app_label=app_label):
+            for metric in registry.each_recordtype(app_label=app_label):
                 metric_name = style.METRIC(metric.__name__)
                 template_name = metric._template_name
                 template_pattern = style.ES_TEMPLATE(metric._template_pattern)

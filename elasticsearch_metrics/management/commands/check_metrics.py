@@ -39,7 +39,7 @@ class Command(BaseCommand):
         out_of_sync_count = 0
         self.stdout.write("Checking for outdated index templates...")
         for app_label in app_labels:
-            for metric in registry.get_metrics(app_label=app_label):
+            for metric in registry.each_recordtype(app_label=app_label):
                 try:
                     metric.check_index_template(using=connection)
                 except (

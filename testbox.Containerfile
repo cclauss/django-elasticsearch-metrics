@@ -1,13 +1,13 @@
 FROM python:3.10-slim as testbox
 
-RUN pip install poetry==2.2.1
+RUN pip install poetry==2.3.2
 
 RUN mkdir -p /code
 WORKDIR /code
 
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --compile --no-root --with=dev --extras=elastic6 --extras=elastic8
+RUN poetry install --compile --no-root --with=dev --extras=elastic6 --extras=elastic8 --extras=anydjango
 COPY ./ ./
 RUN poetry install --compile --only-root
 
-CMD ["poetry", "run", "tox"]
+CMD ["poetry", "run", "python", "-m", "elasticsearch_metrics.tests"]

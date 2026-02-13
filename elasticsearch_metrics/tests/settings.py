@@ -6,6 +6,7 @@ USE_TZ = True
 TIMEZONE = "UTC"
 ALLOWED_HOSTS = []
 INSTALLED_APPS = [
+    # 
     "elasticsearch_metrics.apps.ElasticsearchMetricsConfig",
     "elasticsearch_metrics.tests.dummy6app",
     "elasticsearch_metrics.tests.dummy8app",
@@ -17,19 +18,19 @@ DJELMETRICS_TIMESERIES_IMPS = {
     "default": [
         "elasticsearch_metrics.imps.elastic6",
         {
-            "hosts": os.environ.get("ELASTICSEARCH6_HOST"),
+            "hosts": os.environ.get("ELASTICSEARCH6_HOST", ""),
         },
     ],
     "elastic8foo": [
         "elasticsearch_metrics.imps.elastic8",
         {
-            "hosts": os.environ.get("ELASTICSEARCH8_HOST"),
+            "hosts": os.environ.get("ELASTICSEARCH8_HOST", ""),
         },
     ],
     "elastic8bar": [
         "elasticsearch_metrics.imps.elastic8",
         {
-            "hosts": os.environ.get("ELASTICSEARCH8_HOST"),
+            "hosts": os.environ.get("ELASTICSEARCH8_HOST", ""),
         },
     ],
 }

@@ -85,7 +85,7 @@ class MetricMeta(IndexMeta):
         # Abstract base metrics can't be instantiated and don't appear in
         # the list of metrics for an app.
         if not abstract:
-            registry.register(app_label, new_cls)
+            registry.register_recordtype(app_label, new_cls)
         return new_cls
 
     # Override IndexMeta.construct_index so that
@@ -224,7 +224,7 @@ class BaseMetric(metaclass=MetricMeta):
         )
 
     @classmethod
-    def get_index_name(cls, date=None):
+    def get_index_name(cls, date=None) -> str:
         date = date or timezone.now().date()
         dateformat = getattr(
             settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
@@ -282,6 +282,7 @@ class DjelmeElastic6Imp(ProtoTimeseriesImp):
 
     imp_name: str
     imp_config: dict[str, str]
+    namespace_prefix: str = ""
 
     @property
     def elastic6_client(self):
@@ -307,7 +308,8 @@ class DjelmeElastic6Imp(ProtoTimeseriesImp):
                 pass
 
     def _each_metric_type(self) -> Iterator[type[Metric]]:
-        for _metric in registry.get_metrics(imp_name=self.imp_name):
+        for _metric in registry.each_recordtype(imp_name=self.imp_name):
+            assert issubclass(_metric, Metric)
             yield _metric
 
 

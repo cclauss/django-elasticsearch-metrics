@@ -1,5 +1,4 @@
 from collections.abc import Iterator
-import importlib
 
 from django.apps import AppConfig
 from django.conf import settings
@@ -21,6 +20,9 @@ class ElasticsearchMetricsConfig(AppConfig):
         autodiscover_modules("metrics")
 
 
+###
+# accessing django settings
+
 def each_timeseries_imp_config() -> Iterator[tuple[str, str, dict[str, str]]]:
     for _imp_name in getattr(settings, _IMPCONFIG_SETTINGS_KEY, ()):
         (_imp_module_path, _imp_config) = get_timeseries_imp_config(_imp_name)
@@ -29,9 +31,11 @@ def each_timeseries_imp_config() -> Iterator[tuple[str, str, dict[str, str]]]:
 
 def get_timeseries_imp_config(imp_name: str) -> tuple[str, dict[str, str]]:
     try:
-        _imp_module_path, _imp_config = getattr(settings, _IMPCONFIG_SETTINGS_KEY)
+        _imps_setting = getattr(settings, _IMPCONFIG_SETTINGS_KEY)
     except AttributeError as _error:
         raise ValueError(f"no `settings.{_IMPCONFIG_SETTINGS_KEY}` found") from _error
+    (_imp_module_path, _imp_config) = _imps_setting.get(imp_name, ('', {}))
+    # TODO: better errors
     assert isinstance(_imp_module_path, str)
     assert isinstance(_imp_config, dict)
     assert all(

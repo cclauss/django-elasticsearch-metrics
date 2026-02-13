@@ -51,13 +51,13 @@ class TestTimeseriesTypeRegistry(SimpleTestCase):
             class Meta:
                 app_label = "anotherapp"
 
-        assert Dummy6Metric in registry.get_recordtypes()
-        assert AnotherMetric in registry.get_recordtypes()
-        assert Dummy6Metric in registry.get_recordtypes(app_label="dummy6app")
-        assert AnotherMetric not in registry.get_recordtypes(app_label="dummy6app")
+        assert Dummy6Metric in registry.each_recordtype()
+        assert AnotherMetric in registry.each_recordtype()
+        assert Dummy6Metric in registry.each_recordtype(app_label="dummy6app")
+        assert AnotherMetric not in registry.each_recordtype(app_label="dummy6app")
 
         with self.assertRaises(LookupError) as excinfo:
-            list(registry.get_recordtypes("notanapp"))
+            list(registry.each_recordtype("notanapp"))
         assert (
             "No recordtypes found in app with label 'notanapp'."
             in excinfo.exception.args[0]
@@ -72,6 +72,6 @@ class TestTimeseriesTypeRegistry(SimpleTestCase):
             class Meta:
                 app_label = "anotherapp"
 
-        assert elastic6.Metric not in registry.get_recordtypes()
-        assert AbstractMetric not in registry.get_recordtypes()
-        assert ConcreteMetric in registry.get_recordtypes()
+        assert elastic6.Metric not in registry.each_recordtype()
+        assert AbstractMetric not in registry.each_recordtype()
+        assert ConcreteMetric in registry.each_recordtype()

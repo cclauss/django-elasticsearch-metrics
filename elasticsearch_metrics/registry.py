@@ -32,11 +32,13 @@ class TimeseriesTypeRegistry:
         default_factory=dict,
     )
 
-    # similar to apps.register_model
+    ###
+    # `register` methods: for adding items to the registry
+
     def register_recordtype(
         self, app_label: str, record_cls: type[ProtoTimeseriesRecord]
     ) -> None:
-        """Add a record type (TimeseriesRecord  to the registry."""
+        """Add a record type to the registry."""
         app_recordtypes = self.all_recordtypes[app_label]
         recordtype_name = record_cls.__name__.lower()
         if recordtype_name in app_recordtypes:
@@ -58,19 +60,9 @@ class TimeseriesTypeRegistry:
             raise RuntimeError(f"duplicate imps named {imp_name!r}")
         self.configured_imps[imp_name] = (imp_module_path, imp_config)
 
-    def each_imp(self) -> Iterator[ProtoTimeseriesImp]:
-        for _imp_name in self.configured_imps.keys():
-            yield self.get_imp(_imp_name)
+    ###
+    # `get` methods: for accessing specific items in the registry
 
-    def get_imp(self, imp_name: str) -> ProtoTimeseriesImp:
-        try:
-            _imp_module_path, _imp_config = self.configured_imps[imp_name]
-        except KeyError as _e:
-            raise LookupError(f"unknown imp {imp_name!r}") from _e
-        _mod = _import_imp_module(_imp_module_path)
-        return _mod.djelme_imp_from_config(imp_name, _imp_config)
-
-    # similar to apps.get_model
     def get_recordtype(
         self, app_label: str, recordtype_name: str | None = None
     ) -> type:
@@ -99,7 +91,18 @@ class TimeseriesTypeRegistry:
                 )
             ) from e
 
-    def get_recordtypes(
+    def get_imp(self, imp_name: str, namespace_prefix: str = "") -> ProtoTimeseriesImp:
+        try:
+            _imp_module_path, _imp_config = self.configured_imps[imp_name]
+        except KeyError as _e:
+            raise LookupError(f"unknown imp {imp_name!r}") from _e
+        _mod = _import_imp_module(_imp_module_path)
+        return _mod.djelme_imp_from_config(imp_name, _imp_config, namespace_prefix)
+
+    ###
+    # `each` methods: for iterating over each registered
+
+    def each_recordtype(
         self, app_label: str = "", imp_name: str | None = None
     ) -> Iterator[type]:
         """Iterate registered metric classes, optionally filtered on an app_label and/or imp_name."""
@@ -109,6 +112,13 @@ class TimeseriesTypeRegistry:
         for app_label in app_labels:
             app_recordtypes = self._get_recordtypes_for_app(app_label=app_label)
             yield from app_recordtypes.values()
+
+    def each_imp(self, namespace_prefix: str = "") -> Iterator[ProtoTimeseriesImp]:
+        for _imp_name in self.configured_imps.keys():
+            yield self.get_imp(_imp_name)
+
+    ###
+    # private methods
 
     def _get_recordtypes_for_app(self, app_label: str) -> dict[str, type]:
         if app_label not in self.all_recordtypes:
@@ -127,6 +137,9 @@ def _import_imp_module(imp_module_path: str) -> ProtoTimeseriesImpModule:
     assert isinstance(_imp_module, ProtoTimeseriesImpModule)
     return _imp_module
 
+
+###
+# module public api
 
 timeseries_type_registry = TimeseriesTypeRegistry()
 registry = timeseries_type_registry  # convenience?

@@ -28,4 +28,5 @@ class ProtoTimeseriesImpModule(typing.Protocol):
     def djelme_imp_from_config(
         imp_name: str,
         imp_config: dict[str, str],
+        namespace_prefix: str = "",
     ) -> ProtoTimeseriesImp: ...

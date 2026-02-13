@@ -27,5 +27,5 @@ class TestCheckMetrics(SimpleDjelmeTestCase):
         self.mock_check_index_template.return_value = True
         self.run_mgmt_command(check_metrics.Command)
         assert self.mock_check_index_template.call_count == len(
-            list(registry.get_metrics())
+            list(registry.each_recordtype())
         )
