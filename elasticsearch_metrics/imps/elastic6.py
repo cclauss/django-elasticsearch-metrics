@@ -1,16 +1,22 @@
+"""elasticsearch_metrics.imps.elastic6: store events and reports in elasticsearch 6"""
+
 from collections import ChainMap
+from collections.abc import Iterator
+import dataclasses
+import functools
 import logging
 
 from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
-from elasticsearch.exceptions import NotFoundError
-from elasticsearch_dsl import Document, connections
-from elasticsearch_dsl.document import IndexMeta, MetaField
-from elasticsearch_dsl.index import Index
+from elasticsearch6.exceptions import NotFoundError
+from elasticsearch6_dsl import Document, connections
+from elasticsearch6_dsl.document import IndexMeta, MetaField
+from elasticsearch6_dsl.index import Index
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
+from elasticsearch_metrics.protocols import ProtoDjelmetricsImp
 from elasticsearch_metrics.registry import registry
 
 # Fields should be imported from this module
@@ -53,7 +59,6 @@ class MetricMeta(IndexMeta):
             return new_cls
 
         template_name = getattr(meta, "template_name", None)
-        template = getattr(meta, "template", None)
         abstract = getattr(meta, "abstract", False)
 
         app_label = getattr(meta, "app_label", None)
@@ -70,17 +75,14 @@ class MetricMeta(IndexMeta):
             else:
                 app_label = app_config.label
 
-        if not template_name or not template:
+        if not template_name:
             metric_name = new_cls.__name__.lower()
             # If template_name not specified in class Meta,
             # compute it as <app label>_<lowercased class name>
-            if not template_name:
-                template_name = "{}_{}".format(app_label, metric_name)
-            # template is <app label>_<lowercased class name>-*
-            template = template or "{}_{}_*".format(app_label, metric_name)
+            template_name = f"{app_label}_{metric_name}"
 
         new_cls._template_name = template_name
-        new_cls._template = template
+        new_cls._template_pattern = f"{template_name}_*"  # template pattern
         # Abstract base metrics can't be instantiated and don't appear in
         # the list of metrics for an app.
         if not abstract:
@@ -219,7 +221,7 @@ class BaseMetric(metaclass=MetricMeta):
     def get_index_template(cls):
         """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
         return cls._index.as_template(
-            template_name=cls._template_name, pattern=cls._template
+            template_name=cls._template_name, pattern=cls._template_pattern
         )
 
     @classmethod
@@ -272,4 +274,42 @@ class Metric(Document, BaseMetric):
         """Overrides Document._default_index so that .search, .get, etc.
         use the metric's template pattern as the default index
         """
-        return index or cls._template
+        return index or cls._template_pattern
+
+
+@dataclasses.dataclass
+class DjelmeElastic6Imp(ProtoDjelmetricsImp):
+    """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)"""
+
+    imp_name: str
+    imp_config: dict[str, str]
+
+    @functools.cached_property
+    def elastic6_client(self):
+        # assumes `configure` was already called
+        return connections.get_connection(self.imp_name)
+
+    def configure(self) -> None:
+        connections.configure(**{self.imp_name: self.imp_config})
+
+    def setup_db(self) -> None:
+        for _metric_type in self._each_metric_type():
+            # TODO: logger.info
+            _metric_type.sync_index_template(using=self.elastic6_client)
+
+    def teardown_db(self) -> None:
+        for _metric_type in self._each_metric_type():
+            _indexname_wildcard = _metric_type._template_pattern
+            _templatename = _metric_type._template_name
+            self.elastic6_client.indices.delete(index=_indexname_wildcard)
+            try:
+                self.elastic6_client.indices.delete_template(_templatename)
+            except NotFoundError:
+                pass
+
+    def _each_metric_type(self) -> Iterator[type[Metric]]:
+        for _metric in registry.get_metrics(imp_name=self.imp_name):
+            yield _metric
+
+
+djelme_imp_from_config = DjelmeElastic6Imp  # for ProtoDjelmetricsImpModule

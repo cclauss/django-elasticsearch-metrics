@@ -12,11 +12,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         id: setup-py
         with:
-          python-version: '3.7'
+          python-version: '3.11'
       - run: pip install -U tox
       - name: alias pythonX.Y for tox
         run: alias python${{ steps.setup-py.outputs.python-version }}=${{ steps.setup-py.outputs.python-path }}
@@ -24,31 +24,30 @@ jobs:
 
 
   test:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ['3.6', '3.7', '3.8', '3.9', '3.10']
-        django: ['1.11', '2.0', '2.1', '2.2', '3.0', '3.1', '3.2', '4.0', '4.1']
+        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        django: ['4.2', '5.1', '5.2']
         # TODO: elasticsearch: ['6', '7', '8', '9']
-        exclude:
-          - {python: '3.6', django: '4.0'}
-          - {python: '3.6', django: '4.1'}
-          - {python: '3.7', django: '4.0'}
-          - {python: '3.7', django: '4.1'}
-          - {python: '3.10', django: '1.11'}
-          - {python: '3.10', django: '2.0'}
-    runs-on: ubuntu-latest
     services:
-      elasticsearch:
+      elasticsearch6:
         image: elasticsearch:6.8.23
         ports:
-          - 9201:9200
+          - 9206:9200
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         id: setup-py
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install -U tox
-      - run: alias python${{ steps.setup-py.outputs.python-version }}=${{ steps.setup-py.outputs.python-path }}
-      - run: TOXENV=`echo 'py${{ matrix.python }}-django${{matrix.django}}' | sed 's/\.//g'` tox
 
+      - name: alias python
+        run: alias python${{ steps.setup-py.outputs.python-version }}=${{ steps.setup-py.outputs.python-path }}
+
+      - name: install despondencies
+        run: pip install -U poetry && poetry install --with=dev --extras=elastic6
+
+      - run: TOXENV=`echo 'py${{ matrix.python }}-django${{matrix.django}}' | sed 's/\.//g'` poetry run tox
+        env:
+          ELASTICSEARCH6_HOST: localhost:9206

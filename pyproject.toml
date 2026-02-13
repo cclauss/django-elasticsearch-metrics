@@ -1,0 +1,89 @@
+[project]
+name = "django-elasticsearch-metrics"
+version = "2026.0.0"
+description = "Django app for storing time-series metrics in Elasticsearch."
+authors = [
+    {name = "CenterForOpenScience", email = "support@cos.io"}
+]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+keywords = [
+    "django",
+    "elastic",
+    "elasticsearch",
+    "elasticsearch-dsl",
+    "time-series",
+    "metrics",
+    "statistics",
+]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+elastic6 = [ "elasticsearch6-dsl>=6.3.0,<7.0.0" ]
+# elastic8 = [ "elasticsearch8>=8.0.0,<9.0.0" ]
+# elastic9 = [ "elasticsearch9>=9.0.0,<10.0.0" ]
+
+[project.urls]
+repository = "http://github.com/CenterForOpenScience/django-elasticsearch-metrics"
+changelog = "https://github.com/CenterForOpenScience/django-elasticsearch-metrics/blob/master/CHANGELOG.md"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+tests = [
+    "factory-boy==3.3.3",
+    "tox>=4.0.0",
+]
+lint = [
+    "pre-commit==2.17.0",
+    "flake8==7.3.0",
+    "flake8-bugbear==25.10.21",
+    "black==25.11.0",
+]
+dev = [
+    { include-group = "tests" },
+    { include-group = "lint" },
+    "konch>=3.0.0",
+]
+
+[tool.poetry]
+packages = [
+    { include = "elasticsearch_metrics" }
+]
+
+[tool.poetry.group.tests]
+optional = true
+
+[tool.poetry.group.lint]
+optional = true
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = 'elasticsearch_metrics.tests.*'
+allow_untyped_calls = true
+allow_untyped_defs = true

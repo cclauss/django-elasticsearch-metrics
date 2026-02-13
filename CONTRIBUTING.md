@@ -1,4 +1,5 @@
 # Contributing
+(TODO: update)
 
 ## Setting up for development
 
@@ -6,24 +7,12 @@
 * `pip install -e '.[dev]'`
 * Install django: `pip install django`
 * (Optional but recommended) Run elasticsearch: `docker-compose up`
-* (Optional but recommended) If you're using a Python 3.6 virtual
-    environment, install the pre-commit hooks, which will
-    format and lint your git staged files:
-
-
-```
-# The pre-commit CLI was installed above
-pre-commit install
-```
 
 * Run tests using the following commands:
 
 ```
 # Run all tests (requires elasticsearch to be running)
-pytest
-
-# Skip tests that require elasticsearch to be running
-pytest -m "not es"
+python3 -m elasticsearch_metrics.tests
 
 # Check syntax
 flake8

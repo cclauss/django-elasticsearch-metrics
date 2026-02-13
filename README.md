@@ -7,8 +7,8 @@ Django app for storing time-series metrics in Elasticsearch.
 
 ## Pre-requisites
 
-* Python 2.7 or >=3.6
-* Django 1.11 or 2.0
+* Python >=3.10
+* Django 4.2, 5.1, or 5.2
 * Elasticsearch 6
 
 ## Install
@@ -43,10 +43,10 @@ A `Metric` is a subclass of [`elasticsearch_dsl.Document`](https://elasticsearch
 ```python
 # myapp/metrics.py
 
-from elasticsearch_metrics import metrics
+from elasticsearch_metrics.imps import elastic8
 
 
-class PageView(metrics.Metric):
+class PageView(elastic8.EventLog):
     user_id = metrics.Integer(index=True, doc_values=True)
 ```
 

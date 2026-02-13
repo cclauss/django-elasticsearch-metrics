@@ -1,4 +1,5 @@
 """factory_boy extension for elasticsearch_metrics."""
+
 from __future__ import absolute_import
 from factory import base
 

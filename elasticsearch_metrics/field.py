@@ -1,5 +1,5 @@
 from django.conf import settings
-from elasticsearch_dsl import field as edsl_field
+from elasticsearch6_dsl import field as edsl_field
 
 __all__ = ["Date"]
 # Expose all fields from elasticsearch_dsl.field
@@ -25,4 +25,4 @@ class Date(edsl_field.Date):
 
     def __init__(self, default_timezone=None, *args, **kwargs):
         default_timezone = default_timezone or getattr(settings, "TIMEZONE", None)
-        super(Date, self).__init__(default_timezone=default_timezone, *args, **kwargs)
+        super(Date, self).__init__(*args, default_timezone=default_timezone, **kwargs)
