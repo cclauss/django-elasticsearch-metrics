@@ -10,156 +10,117 @@
 ...             "refresh_interval": "5s",
 ...         }
 """
+
 __all__ = (
-    'TimeseriesRecord',
-    'EventLog',
-    'PeriodicReport',
+    "TimeseriesRecord",
+    "EventLog",
+    "PeriodicReport",
 )
-from collections import ChainMap
 import dataclasses
 import datetime
 import logging
-import typing
 
+from django import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8.dsl import Document, connections
-from elasticsearch8.dsl.document import MetaField
-from elasticsearch8.dsl.index import Index
+from elasticsearch8.dsl._sync.document import IndexMeta
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
-from elasticsearch_metrics.registry import registry
-
-# Fields should be imported from this module
-from elasticsearch_metrics.field import *  # noqa: F40
-from elasticsearch_metrics.field import Date
+from elasticsearch_metrics.registry import timeseries_type_registry
+from elasticsearch_metrics.protocols import ProtoTimeseriesImp
 
 DEFAULT_DATE_FORMAT = "%Y.%m.%d"
 
 logger = logging.getLogger(__name__)
 
 
-# TODO: do index inheritance without metaclasses
-# class IndexInheritanceMeta(IndexMeta):
-#     # override elasticsearch8.document.IndexMeta.construct_index
-#     # so Index attrs are inherited
-#     # and each subtype gets their own index (`opts` is never None)
-#     @classmethod
-#     def construct_index(cls, opts, bases):
-#         parent_configs = [
-#             base._index.to_dict() for base in bases if hasattr(base, "_index")
-#         ]
-#         chained_opts = (
-#             ChainMap(ReadonlyAttrMap(opts), *parent_configs)
-#             if opts
-#             else ChainMap(*parent_configs)
-#         )
-#         # since chained_opts is not None, IndexMeta.construct_index won't reuse the index from a parent type
-#         return super().construct_index(chained_opts, bases)
-# 
+class _DjelmeRecordMeta(IndexMeta):
+    """Metaclass for the base `DjelmeRecord` class.
 
-# class TimeseriesIndexMeta(IndexMeta):
-#     """Metaclass for the base `TimeseriesRecord` class."""
-# 
-#     def __new__(mcls, name, bases, attrs):  # noqa: B902
-#         new_cls = super().__new__(mcls, name, bases, attrs)
-# 
-#         meta = attrs.get("Meta", None)
-#         module = attrs.get("__module__")
-# 
-#         # Also ensure initialization is only performed for subclasses of TimeseriesRecord
-#         # (excluding TimeseriesRecord class itself).
-#         if isinstance(new_cls, TimeseriesIndexMeta) 
-#         if any(
-#             isinstance(b, TimeseriesIndexMeta) and (b is not BaseTimeseriesDoc)
-#             for b in bases
-#         ):
-#             return new_cls
-# 
-# 
-#     def _register_timeseries_indexset(self, ...):
-#         template_name = getattr(meta, "template_name", None)
-#         template = getattr(meta, "template", None)
-#         abstract = getattr(meta, "abstract", False)
-# 
-#         app_label = getattr(meta, "app_label", None)
-#         # Look for an application configuration to attach the model to.
-#         app_config = apps.get_containing_app_config(module)
-#         if app_label is None:
-#             if app_config is None:
-#                 if not abstract:
-#                     raise RuntimeError(
-#                         "TimeseriesRecord class %s.%s doesn't declare an explicit "
-#                         "app_label and isn't in an application in "
-#                         "INSTALLED_APPS." % (module, name)
-#                     )
-#             else:
-#                 app_label = app_config.label
-# 
-#         if not template_name or not template:
-#             metric_name = new_cls.__name__.lower()
-#             # If template_name not specified in class Meta,
-#             # compute it as <app label>_<lowercased class name>
-#             if not template_name:
-#                 template_name = "{}_{}".format(app_label, metric_name)
-#             # template is <app label>_<lowercased class name>-*
-#             template = template or "{}_{}_*".format(app_label, metric_name)
-# 
-#         new_cls._template_name = template_name
-#         new_cls._template_pattern = template
-#         # Abstract base metrics can't be instantiated and don't appear in
-#         # the list of metrics for an app.
-#         if not abstract:
-#             registry.register_recordtype(app_label, new_cls)
-#         return new_cls
-# 
-#     # Override IndexMeta.construct_index so that
-#     # a new Index is created for every metric class
-#     # and Index attrs are inherited
-#     @classmethod
-#     def construct_index(cls, opts, bases):
-#         parent_configs = [
-#             base._index.to_dict() for base in bases if hasattr(base, "_index")
-#         ]
-#         if opts:
-#             index_config = ChainMap(ReadonlyAttrMap(opts), *parent_configs)
-#         else:
-#             index_config = ChainMap(*parent_configs)
-# 
-#         i = Index(
-#             index_config.get("name", "*"),
-#             using=index_config.get("using", "default"),
-#         )
-#         i.settings(**index_config.get("settings", {}))
-#         i.aliases(**index_config.get("aliases", {}))
-#         for a in index_config.get("analyzers", ()):
-#             i.analyzer(a)
-#         return i
-# 
-# 
+    overrides behavior in elasticsearch-py's `IndexMeta` to allow
+    additional config in a type's `class Meta`
 
-class TimeseriesRecord(Document):
-    """Base document
+    >>> class MyAbstractRecord(DjelmeRecord):
+    ...     foo: int
+    ...     class Meta:
+    ...         abstract = True
+    ...         blargl = 5
+    >>> MyAbstractRecord.Meta.blargl
+    >>> MyAbstractRecord.is_abstract
     """
+    _TYPECONFIG_CLS = 'Meta'
 
+    def __new__(mcls, name, bases, attrs):  # noqa: B902
+        # override IndexMeta.__new__, which removes `class Meta`
+        _doc_type_meta = attrs.get("Meta", None)
+        _cls = super().__new__(mcls, name, bases, attrs)
+        if not hasattr(_cls, "Meta"):
+            _cls.Meta = _doc_type_meta
+        return _cls
+
+    def _get_meta_attr(self, attr_name: str, default=None) -> bool:
+        _meta = getattr(self, "Meta", None)
+        return getattr(_meta, attr_name, default)
+
+    @property
+    def is_abstract(self) -> bool:
+        return self._get_meta_attr("abstract", False)
+
+    @property
+    def app_label(self) -> str:
+        _app_label = self._get_meta_attr("app_label")
+        if _app_label is not None:
+            # Look for an application configuration to attach the model to.
+            _app_config = apps.get_containing_app_config(self.__module__)
+            if _app_config is None:
+                if not self.is_abstract:
+                    raise RuntimeError(
+                        "document class %s.%s doesn't declare an explicit "
+                        "app_label and isn't in an application in "
+                        "INSTALLED_APPS." % (self.__module__, self.__qualname__)
+                    )
+            else:
+                _app_label = _app_config.label
+        assert isinstance(_app_label, str)
+        return _app_label
+
+
+class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
+    """a subclass of elasticsearch8.dsl.Document, with conveniences"""
+
+    class Meta:
+        abstract = True
+
+
+@dataclasses.dataclass(frozen=True)
+class TimeseriesIndexName:
+    namespace_prefix: str
+    app_label: str
+    recordtype_name: str
+    time_coverage: str
+
+    def __str__(self) -> str:
+        return f"{self.namespace_prefix}_{self.app_label}_{self.recordtype_name}_{self.time_coverage}"
+
+
+class TimeseriesRecord(DjelmeRecord):
     timestamp = Date(doc_values=True, required=True)
 
     class Meta:
-        source = MetaField(enabled=False)
         abstract = True
 
     def __init_subclass__(cls, **kwargs):
-        # (sidenote: simpler? way to register subclasses, compared to metaclasses)
         super().__init_subclass__(**kwargs)
-        # TODO: register cls with metrics registry
-        if not cls.get_meta_setting('abstract'):
-            registry.register_recordtype(cls.get_app_label(), cls)
+        if not cls.is_abstract:
+            timeseries_type_registry.register_recordtype(cls.app_label, cls)
 
     @classmethod
     def init(cls, index=None, using=None):
         """Create the index and populate the mappings in elasticsearch."""
+        assert not cls.is_abstract
         cls.sync_index_template(using=using)
         return super().init(index=index or cls.get_timeseries_index_name(), using=using)
 
@@ -167,45 +128,42 @@ class TimeseriesRecord(Document):
     def get_timeseries_index_template(cls):
         """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
         return cls._index.as_template(
-            template_name=cls._template_name, pattern=cls._template_pattern
+            template_name=cls._template_name,
+            pattern=cls.index_name_wildcard,
         )
 
     @classmethod
-    def get_template_pattern(cls) -> str:
-        return f"{cls.get_template_name()}_*"
+    @property
+    def template_name(cls) -> str:
+        return (
+            cls._get_meta_attr("template_name")
+            or f"{cls.app_label}_{cls.__name__.lower()}"
+        )
 
     @classmethod
-    def get_template_pattern(cls) -> str:
-        if not template_name:
-            metric_name = new_cls.__name__.lower()
+    @property
+    def index_name_wildcard(cls) -> str:
+        return f"{cls.template_name}_*"
+
+    @classmethod
+    def get_template_name(cls) -> str:
+        _template_name = cls.get_meta_setting("template_name")
+        if not _template_name:
             # If template_name not specified in class Meta,
             # compute it as <app label>_<lowercased class name>
-            template_name = f"{app_label}_{metric_name}"
-
-        new_cls._template_name = template_name
-
-    @classmethod
-    def get_app_label(cls) -> str:
-        _app_label = self.get_meta_setting("app_label")
-        if _app_label is None:
-            # Look for an application configuration to attach the model to.
-            app_config = apps.get_containing_app_config(module)
-            if app_config is None:
-                if not self.get_meta_setting("abstract"):
-                    raise RuntimeError(
-                        "Metric class %s.%s doesn't declare an explicit "
-                        "app_label and isn't in an application in "
-                        "INSTALLED_APPS." % (module, name)
-                    )
-            else:
-                _app_label = app_config.label
-        assert isinstance(_app_label, str)
-        return _app_label
+            _cls_name = cls.__name__.lower()
+            _template_name = f"{cls.app_label}_{_cls_name}"
+        return _template_name
 
     @classmethod
-    def get_meta_setting(cls, setting_name: str) -> typing.Any:
-        _meta_settings_cls = getattr(cls, 'Meta', None)
-        return getattr(_meta_settings_cls, setting_name, None)
+    def get_timeseries_index_name(cls, datestamp: datetime.date | None = None) -> str:
+        datestamp = datestamp or timezone.now().date()
+        # TODO: configure format on cls, fallback to app-wide setting
+        dateformat = getattr(
+            settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
+        )
+        date_formatted = datetime.date.strftime(dateformat)
+        return "{}_{}".format(cls._template_name, date_formatted)
 
     ######
     @classmethod
@@ -285,16 +243,6 @@ class TimeseriesRecord(Document):
             return True
 
     @classmethod
-    def get_timeseries_index_name(cls, datestamp: datetime.date | None = None) -> str:
-        datestamp = datestamp or timezone.now().date()
-        # TODO: configure format on cls, fallback to app-wide setting
-        dateformat = getattr(
-            settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
-        )
-        date_formatted = date.strftime(dateformat)
-        return "{}_{}".format(cls._template_name, date_formatted)
-
-    @classmethod
     def record(cls, timestamp=None, **kwargs):
         """Persist a metric in Elasticsearch.
 
@@ -326,7 +274,8 @@ class TimeseriesRecord(Document):
         """Overrides Document._default_index so that .search, .get, etc.
         use the metric's template pattern as the default index
         """
-        return index or cls._template_pattern
+        assert not cls.is_abstract
+        return index or cls.index_name_wildcard
 
 
 class EventLog(TimeseriesRecord):
@@ -338,7 +287,7 @@ class EventLog(TimeseriesRecord):
 class PeriodicReport(TimeseriesRecord):
     timestamp: datetime.datetime
     report_label: str
-    report_coverage: ...  # timespan
+    report_coverage: str
 
 
 @dataclasses.dataclass
@@ -364,7 +313,7 @@ class DjelmeElastic8Imp(ProtoTimeseriesImp):
 
     def teardown_timeseries_indexes(self) -> None:
         for _metric_type in self._each_metric_type():
-            _indexname_wildcard = _metric_type._template_pattern
+            _indexname_wildcard = _metric_type.index_name_wildcard
             _templatename = _metric_type._template_name
             self.elastic6_client.indices.delete(index=_indexname_wildcard)
             try:
@@ -373,7 +322,7 @@ class DjelmeElastic8Imp(ProtoTimeseriesImp):
                 pass
 
     def _each_metric_type(self) -> Iterator[type[Metric]]:
-        for _metric in registry.each_recordtype(imp_name=self.imp_name):
+        for _metric in timeseries_type_registry.each_recordtype(imp_name=self.imp_name):
             assert issubclass(_metric, Metric)
             yield _metric
 
