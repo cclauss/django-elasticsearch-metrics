@@ -13,13 +13,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         style = color_style()
         if options["app_label"]:
-            if options["app_label"] not in registry.all_timeseries_types:
+            if options["app_label"] not in registry.all_recordtypes:
                 raise CommandError(
                     "No metrics found for app '{}'".format(options["app_label"])
                 )
             app_labels = [options["app_label"]]
         else:
-            app_labels = registry.all_timeseries_types.keys()
+            app_labels = registry.all_recordtypes.keys()
         for app_label in app_labels:
             self.stdout.write(
                 "Metrics for '{}':".format(app_label), style.MIGRATE_HEADING

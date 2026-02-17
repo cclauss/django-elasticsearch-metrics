@@ -81,7 +81,7 @@ class TimeseriesTypeRegistry:
         if recordtype_name is None:
             app_label, recordtype_name = app_label.split(".")
 
-        app_recordtypes = self._get_recordtypes_for_app(app_label=app_label)
+        app_recordtypes = self._get_recordtypes_for_app(app_label)
         try:
             return app_recordtypes[recordtype_name.lower()]
         except KeyError as e:
@@ -90,6 +90,13 @@ class TimeseriesTypeRegistry:
                     app_label, recordtype_name
                 )
             ) from e
+
+    def get_imp_module(self, imp_name: str) -> ProtoTimeseriesImp:
+        try:
+            _imp_module_path, _ = self.configured_imps[imp_name]
+        except KeyError as _e:
+            raise LookupError(f"unknown imp {imp_name!r}") from _e
+        return _import_imp_module(_imp_module_path)
 
     def get_imp(self, imp_name: str, namespace_prefix: str = "") -> ProtoTimeseriesImp:
         try:
@@ -103,15 +110,18 @@ class TimeseriesTypeRegistry:
     # `each` methods: for iterating over each registered
 
     def each_recordtype(
-        self, app_label: str = "", imp_name: str | None = None
+        self,
+        app_label: str = "",
+        imp_name: str | None = None,
     ) -> Iterator[type]:
         """Iterate registered metric classes, optionally filtered on an app_label and/or imp_name."""
         apps.check_apps_ready()
-
+        _imp_module = None if imp_name is None else self.get_imp_module(imp_name)
         app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for app_label in app_labels:
-            app_recordtypes = self._get_recordtypes_for_app(app_label=app_label)
-            yield from app_recordtypes.values()
+            for _recordtype in self._get_recordtypes_for_app(app_label).values():
+                if (_imp_module is None) or _imp_module.is_of_imp(_recordtype):
+                    yield _recordtype
 
     def each_imp(self, namespace_prefix: str = "") -> Iterator[ProtoTimeseriesImp]:
         for _imp_name in self.configured_imps.keys():
@@ -123,7 +133,7 @@ class TimeseriesTypeRegistry:
     def _get_recordtypes_for_app(self, app_label: str) -> dict[str, type]:
         if app_label not in self.all_recordtypes:
             raise LookupError(
-                "No metrics found in app with label '{}'.".format(app_label)
+                "No recordtypes found in app with label '{}'.".format(app_label)
             )
         return self.all_recordtypes[app_label]
 

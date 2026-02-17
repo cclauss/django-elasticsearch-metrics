@@ -33,10 +33,10 @@ route_prefix_analyzer = analyzer(
 
 
 class PreprintView(elastic6.Metric):
-    provider_id = elastic6.Keyword(index=True)
-    user_id = elastic6.Keyword(index=True)
-    preprint_id = elastic6.Keyword(index=True)
-    route_name = elastic6.Text(analyzer=route_prefix_analyzer)
+    provider_id = elastic6.fields.Keyword(index=True)
+    user_id = elastic6.fields.Keyword(index=True)
+    preprint_id = elastic6.fields.Keyword(index=True)
+    route_name = elastic6.fields.Text(analyzer=route_prefix_analyzer)
 
     class Index:
         settings = {"refresh_interval": "-1"}
@@ -157,7 +157,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_inheritance(self):
         class MyBaseMetric(elastic6.Metric):
-            user_id = elastic6.Keyword(index=True)
+            user_id = elastic6.fields.Keyword(index=True)
 
             class Index:
                 settings = {"number_of_shards": 2}
@@ -257,16 +257,6 @@ class TestIntegration(RealElasticTestCase):
     def es6_client(self):
         return connections.get_connection("default")
 
-    def test_mapping(self):
-        PreprintView.init()
-        name = PreprintView.get_index_name()
-        mapping = self.es6_client.indices.get_mapping(index=name)
-        properties = mapping[name]["mappings"]["doc"]["properties"]
-        assert properties["timestamp"] == {"type": "date"}
-        assert properties["provider_id"] == {"type": "keyword"}
-        assert properties["user_id"] == {"type": "keyword"}
-        assert properties["preprint_id"] == {"type": "keyword"}
-
     def test_create_document(self):
         provider_id = "12345"
         user_id = "abcde"
@@ -276,8 +266,17 @@ class TestIntegration(RealElasticTestCase):
         )
         doc.save()
         document = PreprintView.get(id=doc.meta.id, index=PreprintView.get_index_name())
-        # TODO flesh out this test more.  Try to query ES?
-        assert document is not None
+        assert document is not None  # TODO: more thoroughly
+
+        # index mappings should match the index template
+        name = PreprintView.get_index_name()
+        mapping = self.es6_client.indices.get_mapping(index=name)
+        properties = mapping[name]["mappings"]["doc"]["properties"]
+        assert properties["timestamp"] == {"type": "date"}
+        assert properties["provider_id"] == {"type": "keyword"}
+        assert properties["user_id"] == {"type": "keyword"}
+        assert properties["preprint_id"] == {"type": "keyword"}
+
 
 
 class TestIntegrationSetup(RealElasticTestCase, auto_setup_imps=False):

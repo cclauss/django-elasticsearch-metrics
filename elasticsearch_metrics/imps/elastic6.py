@@ -9,7 +9,8 @@ from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch6.exceptions import NotFoundError
-from elasticsearch6_dsl import Document, connections
+import elasticsearch6_dsl
+from elasticsearch6_dsl import Document, connections, Date
 from elasticsearch6_dsl.document import IndexMeta, MetaField
 from elasticsearch6_dsl.index import Index
 
@@ -18,13 +19,11 @@ from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.protocols import ProtoTimeseriesImp
 from elasticsearch_metrics.registry import registry
 
-# Fields should be imported from this module
-from elasticsearch_metrics.field import *  # noqa: F40
-from elasticsearch_metrics.field import Date
-
 DEFAULT_DATE_FORMAT = "%Y.%m.%d"
 
 logger = logging.getLogger(__name__)
+
+fields = elasticsearch6_dsl.field
 
 
 class ReadonlyAttrMap:
@@ -314,3 +313,6 @@ class DjelmeElastic6Imp(ProtoTimeseriesImp):
 
 
 djelme_imp_from_config = DjelmeElastic6Imp  # for ProtoDjelmetricsImpModule
+
+def is_of_imp(some_type: type) -> bool:  # for ProtoDjelmetricsImpModule
+    return (some_type.__module__ == __name__) or issubclass(some_type, Metric)

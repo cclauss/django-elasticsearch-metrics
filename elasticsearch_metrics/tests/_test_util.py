@@ -49,6 +49,7 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
     def setUp(self):
         super().setUp()
         if self.__auto_setup_imps:
+            self.teardown_djelme_imps()  # in case any already exist
             self.setup_djelme_imps()
 
     def tearDown(self):

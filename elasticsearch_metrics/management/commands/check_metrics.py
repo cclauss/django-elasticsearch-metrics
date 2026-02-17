@@ -30,7 +30,7 @@ class Command(BaseCommand):
         if options["app_label"]:
             if options["app_label"] not in registry.all_recordtypes:
                 raise CommandError(
-                    "No metrics found for app '{}'".format(options["app_label"])
+                    "No recordtypes found for app '{}'".format(options["app_label"])
                 )
             app_labels = [options["app_label"]]
         else:
@@ -58,4 +58,4 @@ class Command(BaseCommand):
             self.stdout.write("Run {cmd} to synchronize.".format(cmd=cmd))
             sys.exit(1)
         else:
-            self.stdout.write("All metrics in sync.", style.SUCCESS)
+            self.stdout.write("All recordtypes in sync.", style.SUCCESS)

@@ -1,24 +1,54 @@
-"""elasticsearch_metrics.date_coverage: for naming timeseries indexes
+"""elasticsearch_metrics.date_coverage: for naming timeseries indexes with lexical time coverage
 
->>> date_coverage('2345')
->>> date_coverage('2345_06')
+>>> TimeCoverage([2345])
+TimeCoverage(seq=[2345])
+>>> date_coverage('2345', '06')
+YearMonthCoverage(year=2345, month=6)
 >>> date_coverage('2345_06_01')
+YearMonthDayCoverage(year=2345, month=6, day=1)
 """
+
 from __future__ import annotations
+from collections.abc import Iterable
 import calendar
 import dataclasses
 import datetime
 import re
 import typing
 
+_DELIMITER: str = "_"
 
-def date_coverage(coverage_str: str) -> ProtoDateCoverage:
+
+def name_from_time_parts(time_parts: Iterable[int]
+    ,*, delimiter: str = _DELIMITER
+                            ) -> str:
+    return delimiter.join(map(int, time_parts))
+
+
+def time_parts_from_name(
+    name: str, *, delimiter: str = _DELIMITER
+) -> ProtoDateCoverage:
     for _coverage_cls in (YearCoverage, YearMonthCoverage, YearMonthDayCoverage):
         try:
             return _coverage_cls.from_str(coverage_str)
         except ValueError:
             pass
     raise ValueError(f"cannot parse {coverage_str!r} into date coverage")
+
+
+def time_parts_from_datetime(dt: datetime.datetime, num_time_parts: int) -> list[int]:
+    _time_iter = _time_parts_from_datetime(dt)
+    return [next(_time_iter) for _ in range(num_time_parts)]
+
+
+def _time_parts_from_datetime(dt: datetime.datetime) -> Iterator[int]:
+    yield dt.year
+    yield dt.month
+    yield dt.day
+    yield dt.hour
+    yield dt.minute
+    yield dt.second
+
 
 
 @typing.runtime_checkable
@@ -33,7 +63,7 @@ class ProtoDateCoverage(typing.Protocol):
     def from_date(cls, date: datetime.date) -> typing.Self:
         """construct from a `date` (or `datetime`)"""
 
-    def __str__(self) -> str:
+    def to_str(self, *, delimiter: str = _DELIMITER) -> str:
         """convert to string (inverse of cls.from_str)"""
 
     def coverage_start(self) -> datetime.datetime:
@@ -48,7 +78,7 @@ class ProtoDateCoverage(typing.Protocol):
 
 
 @dataclasses.dataclass(frozen=True)
-class YearCoverage(ProtoDateCoverage):
+class TimeCoverage(ProtoDateCoverage):
     DATE_COVERAGE_RE = re.compile(r"(\d{4,})")
 
     year: int
@@ -70,6 +100,7 @@ class YearCoverage(ProtoDateCoverage):
             _year = given_date.year
         return cls(_year)
 
+    def to_str(self, *, delimiter: str = _DELIMITER) -> str:
     def __str__(self) -> str:
         return str(self.year)
 
@@ -88,7 +119,6 @@ class YearCoverage(ProtoDateCoverage):
 
 @dataclasses.dataclass(frozen=True)
 class YearMonthCoverage(YearCoverage):
-    _DELIMITER: typing.ClassVar[str] = "_"
     DATE_COVERAGE_RE = re.compile(_DELIMITER.join((r"(\d{4,})", r"(\d\d)")))
 
     month: int

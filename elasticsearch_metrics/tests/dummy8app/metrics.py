@@ -1,17 +1,19 @@
-from elasticsearch_metrics.imps import elastic6
+from elasticsearch_metrics.imps.elastic8 import (
+    EventLog,
+    PeriodicReport,
+)
 
 
-class Dummy6Metric(elastic6.Metric):
-    my_int = elastic6.Integer()
+class Dummy8Event(EventLog):
+    intensity: int
 
 
-class Dummy6MetricWithExplicitTemplateName(elastic6.Metric):
-    my_keyword = elastic6.Keyword()
+class Dummy8EventWithExplicitTemplateName(EventLog):
+    intenzity: int
 
     class Meta:
-        template_name = "dummy6metric"
+        template_name = "dummy8evenz"
 
 
-class Dummy6MetricWithExplicitTemplatePattern(elastic6.Metric):
-    class Meta:
-        template = "dummy6metric-*"
+class Dummy8Report(PeriodicReport):
+    intestines: int

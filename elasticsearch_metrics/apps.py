@@ -17,6 +17,7 @@ class ElasticsearchMetricsConfig(AppConfig):
             timeseries_type_registry.register_imp(
                 _imp_name, _imp_module_path, _imp_config
             )
+            timeseries_type_registry.get_imp(_imp_name).configure()
         autodiscover_modules("metrics")
 
 

@@ -16,6 +16,7 @@ __all__ = (
     "EventLog",
     "PeriodicReport",
 )
+from collections.abc import Iterator
 import dataclasses
 import datetime
 import logging
@@ -49,7 +50,10 @@ class _DjelmeRecordMeta(IndexMeta):
     ...         abstract = True
     ...         blargl = 5
     >>> MyAbstractRecord.Meta.blargl
+    5
     >>> MyAbstractRecord.is_abstract
+    True
+    >>> MyAbstractRecord.app_label
     """
     _TYPECONFIG_CLS = 'Meta'
 
@@ -107,7 +111,7 @@ class TimeseriesIndexName:
 
 
 class TimeseriesRecord(DjelmeRecord):
-    timestamp = Date(doc_values=True, required=True)
+    timestamp: datetime.datetime
 
     class Meta:
         abstract = True
@@ -307,12 +311,12 @@ class DjelmeElastic8Imp(ProtoTimeseriesImp):
         connections.configure(**{self.imp_name: self.imp_config})
 
     def setup_timeseries_indexes(self) -> None:
-        for _metric_type in self._each_metric_type():
+        for _metric_type in self._each_recordtype():
             # TODO: logger.info
             _metric_type.sync_index_template(using=self.elastic6_client)
 
     def teardown_timeseries_indexes(self) -> None:
-        for _metric_type in self._each_metric_type():
+        for _metric_type in self._each_recordtype():
             _indexname_wildcard = _metric_type.index_name_wildcard
             _templatename = _metric_type._template_name
             self.elastic6_client.indices.delete(index=_indexname_wildcard)
@@ -321,10 +325,13 @@ class DjelmeElastic8Imp(ProtoTimeseriesImp):
             except NotFoundError:
                 pass
 
-    def _each_metric_type(self) -> Iterator[type[Metric]]:
-        for _metric in timeseries_type_registry.each_recordtype(imp_name=self.imp_name):
-            assert issubclass(_metric, Metric)
-            yield _metric
+    def _each_recordtype(self) -> Iterator[type]:
+        for _type in timeseries_type_registry.each_recordtype(imp_name=self.imp_name):
+            assert issubclass(_type, DjelmeRecord)
+            yield _type
 
 
 djelme_imp_from_config = DjelmeElastic8Imp  # for ProtoDjelmetricsImpModule
+
+def is_of_imp(some_type: type) -> bool:  # for ProtoDjelmetricsImpModule
+    return (some_type.__module__ == __name__) or issubclass(some_type, DjelmeRecord)

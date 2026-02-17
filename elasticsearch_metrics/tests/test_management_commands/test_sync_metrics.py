@@ -19,11 +19,11 @@ class TestSyncMetrics(SimpleDjelmeTestCase):
         assert self.mock_sync_index_template.call_count == len(
             list(registry.each_recordtype())
         )
-        assert "Synchronized metrics." in out
+        assert "Synchronized recordtypes." in out
 
     def test_with_invalid_app(self):
         out, err = self.run_mgmt_command(sync_metrics.Command, "notanapp")
-        assert "No metrics found for app 'notanapp'" in err
+        assert "No recordtypes found for app 'notanapp'" in err
 
     def test_with_app_label(self):
         class DummyMetric2(elastic6.Metric):

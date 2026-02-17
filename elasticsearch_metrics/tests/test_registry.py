@@ -42,7 +42,7 @@ class TestTimeseriesTypeRegistry(SimpleTestCase):
         with self.assertRaises(LookupError) as excinfo:
             registry.get_recordtype("notanapp", "Dummy6Metric")
         assert (
-            "No metrics found in app with label 'notanapp'."
+            "No recordtypes found in app with label 'notanapp'."
             in excinfo.exception.args[0]
         )
 
