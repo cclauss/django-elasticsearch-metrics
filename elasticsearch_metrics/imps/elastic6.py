@@ -293,11 +293,12 @@ class DjelmeElastic6Imp(ProtoTimeseriesImp):
 
     def setup_timeseries_indexes(self) -> None:
         for _metric_type in self._each_metric_type():
-            # TODO: logger.info
+            logger.info('setting up %r', _metric_type)
             _metric_type.sync_index_template(using=self.elastic6_client)
 
     def teardown_timeseries_indexes(self) -> None:
         for _metric_type in self._each_metric_type():
+            logger.info('tearing down %r', _metric_type)
             _indexname_wildcard = _metric_type._template_pattern
             _templatename = _metric_type._template_name
             self.elastic6_client.indices.delete(index=_indexname_wildcard)
@@ -312,7 +313,4 @@ class DjelmeElastic6Imp(ProtoTimeseriesImp):
             yield _metric
 
 
-djelme_imp_from_config = DjelmeElastic6Imp  # for ProtoDjelmetricsImpModule
-
-def is_of_imp(some_type: type) -> bool:  # for ProtoDjelmetricsImpModule
-    return (some_type.__module__ == __name__) or issubclass(some_type, Metric)
+djelme_imp_from_config = DjelmeElastic6Imp  # for ProtoTimeseriesImpModule

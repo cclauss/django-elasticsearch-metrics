@@ -1,10 +1,10 @@
 import doctest
 
-import elasticsearch_metrics.date_coverage
+import elasticsearch_metrics.time_coverage
 import elasticsearch_metrics.imps.elastic8
 
 _MODULES_WITH_DOCTESTS = (
-    elasticsearch_metrics.date_coverage,
+    elasticsearch_metrics.time_coverage,
     elasticsearch_metrics.imps.elastic8,
 )
 

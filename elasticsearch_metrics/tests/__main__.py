@@ -2,6 +2,7 @@
 
 a convenience for running with `python3 -m elasticsearch_metrics.tests`
 """
+from sys import argv
 
 if __name__ == "__main__":
     import os
@@ -12,6 +13,6 @@ if __name__ == "__main__":
         "DJANGO_SETTINGS_MODULE", "elasticsearch_metrics.tests.settings"
     )
     django.setup()
-    django.core.management.call_command("test", "--failfast", "--pdb")
+    django.core.management.call_command("test", "--failfast", "--pdb", *argv[1:])
 
     # TODO: lint with flake8, mypy, ...

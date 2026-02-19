@@ -120,7 +120,9 @@ class TimeseriesTypeRegistry:
         app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for app_label in app_labels:
             for _recordtype in self._get_recordtypes_for_app(app_label).values():
-                if (_imp_module is None) or _imp_module.is_of_imp(_recordtype):
+                if (_imp_module is None) or self._is_type_downstream_of_module(
+                    _recordtype, _imp_module.__name__
+                ):
                     yield _recordtype
 
     def each_imp(self, namespace_prefix: str = "") -> Iterator[ProtoTimeseriesImp]:
@@ -136,6 +138,10 @@ class TimeseriesTypeRegistry:
                 "No recordtypes found in app with label '{}'.".format(app_label)
             )
         return self.all_recordtypes[app_label]
+
+    def _is_type_downstream_of_module(self, given_type: type, module_name: str) -> bool:
+        _upstream_modules = (_cls.__module__ for _cls in given_type.__mro__)
+        return (module_name in _upstream_modules)
 
 
 @functools.lru_cache

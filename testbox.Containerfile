@@ -8,6 +8,6 @@ WORKDIR /code
 COPY pyproject.toml poetry.lock ./
 RUN poetry install --compile --no-root --with=dev --extras=elastic6 --extras=elastic8 --extras=anydjango
 COPY ./ ./
-RUN poetry install --compile --only-root
+RUN poetry install --only-root
 
 CMD ["poetry", "run", "python", "-m", "elasticsearch_metrics.tests"]

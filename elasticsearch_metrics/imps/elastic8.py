@@ -21,7 +21,7 @@ import dataclasses
 import datetime
 import logging
 
-from django import apps
+from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
@@ -51,18 +51,27 @@ class _DjelmeRecordMeta(IndexMeta):
     ...         blargl = 5
     >>> MyAbstractRecord.Meta.blargl
     5
+    >>> MyAbstractRecord.Meta.abstract
+    True
     >>> MyAbstractRecord.is_abstract
     True
     >>> MyAbstractRecord.app_label
+    'elasticsearch_metrics'
     """
-    _TYPECONFIG_CLS = 'Meta'
+
+    _TYPECONFIG_CLS = "Meta"
 
     def __new__(mcls, name, bases, attrs):  # noqa: B902
         # override IndexMeta.__new__, which removes `class Meta`
         _doc_type_meta = attrs.get("Meta", None)
         _cls = super().__new__(mcls, name, bases, attrs)
-        if not hasattr(_cls, "Meta"):
-            _cls.Meta = _doc_type_meta
+        if _doc_type_meta is not None:
+            if hasattr(_cls, "Meta"):
+                for _attrname, _attrval in _doc_type_meta.__dict__.items():
+                    if not hasattr(_cls.Meta, _attrname):
+                        setattr(_cls.Meta, _attrname, _attrval)
+            else:
+                _cls.Meta = _doc_type_meta
         return _cls
 
     def _get_meta_attr(self, attr_name: str, default=None) -> bool:
@@ -76,20 +85,30 @@ class _DjelmeRecordMeta(IndexMeta):
     @property
     def app_label(self) -> str:
         _app_label = self._get_meta_attr("app_label")
-        if _app_label is not None:
-            # Look for an application configuration to attach the model to.
-            _app_config = apps.get_containing_app_config(self.__module__)
-            if _app_config is None:
-                if not self.is_abstract:
-                    raise RuntimeError(
-                        "document class %s.%s doesn't declare an explicit "
-                        "app_label and isn't in an application in "
-                        "INSTALLED_APPS." % (self.__module__, self.__qualname__)
-                    )
-            else:
-                _app_label = _app_config.label
+        if _app_label is None:
+            _app_label = self._find_app_label()
         assert isinstance(_app_label, str)
         return _app_label
+
+    def _find_app_label(self) -> str:
+        # Look for an application configuration to attach the model to.
+        _containing_app_configs = sorted(
+            (
+                _app_config
+                for _app_config in apps.get_app_configs()
+                if self.__module__.startswith(_app_config.module.__name__)
+            ),
+            key=lambda _config: len(_config.module.__name__),
+            reverse=True,  # longest module name first
+        )
+        if not _containing_app_configs:
+            raise RuntimeError(
+                "document class %s.%s doesn't declare an explicit "
+                "app_label and isn't in an application in "
+                "INSTALLED_APPS." % (self.__module__, self.__qualname__)
+            )
+        _app_config = _containing_app_configs[0]
+        return _app_config.label
 
 
 class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
@@ -123,7 +142,10 @@ class TimeseriesRecord(DjelmeRecord):
 
     @classmethod
     def init(cls, index=None, using=None):
-        """Create the index and populate the mappings in elasticsearch."""
+        """Create the index and populate the mappings in elasticsearch.
+
+        overrides elasticsearch.Document.init
+        """
         assert not cls.is_abstract
         cls.sync_index_template(using=using)
         return super().init(index=index or cls.get_timeseries_index_name(), using=using)
@@ -295,7 +317,9 @@ class PeriodicReport(TimeseriesRecord):
 
 
 @dataclasses.dataclass
-class DjelmeElastic8Imp(ProtoTimeseriesImp):
+class DjelmeElastic8Imp(
+    ProtoTimeseriesImp
+):  # for ProtoTimeseriesImpModule.djelme_imp_from_config
     """DjelmeElastic8Imp: the elastic8 implementation of djelme (for use by generic djelme code)"""
 
     imp_name: str
@@ -331,7 +355,4 @@ class DjelmeElastic8Imp(ProtoTimeseriesImp):
             yield _type
 
 
-djelme_imp_from_config = DjelmeElastic8Imp  # for ProtoDjelmetricsImpModule
-
-def is_of_imp(some_type: type) -> bool:  # for ProtoDjelmetricsImpModule
-    return (some_type.__module__ == __name__) or issubclass(some_type, DjelmeRecord)
+djelme_imp_from_config = DjelmeElastic8Imp  # for ProtoTimeseriesImpModule

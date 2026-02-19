@@ -44,6 +44,3 @@ class ProtoTimeseriesImpModule(typing.Protocol):
         imp_config: dict[str, str],
         namespace_prefix: str = "",
     ) -> ProtoTimeseriesImp: ...
-
-    @staticmethod
-    def is_of_imp(some_type: type) -> bool: ...
