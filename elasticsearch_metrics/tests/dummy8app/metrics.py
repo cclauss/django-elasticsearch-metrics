@@ -8,11 +8,11 @@ class Dummy8Event(EventLog):
     intensity: int
 
 
-class Dummy8EventWithExplicitTemplateName(EventLog):
+class Dummy8EventWithExplicitNamePrefix(EventLog):
     intenzity: int
 
     class Meta:
-        template_name = "dummy8evenz"
+        name_prefix = "dummy8evenz"
 
 
 class Dummy8Report(PeriodicReport):

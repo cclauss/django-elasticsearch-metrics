@@ -32,10 +32,12 @@ from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import timeseries_type_registry
 from elasticsearch_metrics.protocols import ProtoTimeseriesImp
+from elasticsearch_metrics.util.index_name import IndexTimesection
 
-DEFAULT_DATE_FORMAT = "%Y.%m.%d"
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_TIMEPART_COUNT = 2  # xxxx_xx
 
 
 class _DjelmeRecordMeta(IndexMeta):
@@ -118,17 +120,6 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
         abstract = True
 
 
-@dataclasses.dataclass(frozen=True)
-class TimeseriesIndexName:
-    namespace_prefix: str
-    app_label: str
-    recordtype_name: str
-    time_coverage: str
-
-    def __str__(self) -> str:
-        return f"{self.namespace_prefix}_{self.app_label}_{self.recordtype_name}_{self.time_coverage}"
-
-
 class TimeseriesRecord(DjelmeRecord):
     timestamp: datetime.datetime
 
@@ -148,7 +139,7 @@ class TimeseriesRecord(DjelmeRecord):
         """
         assert not cls.is_abstract
         cls.sync_index_template(using=using)
-        return super().init(index=index or cls.get_timeseries_index_name(), using=using)
+        return super().init(index=index or str(cls.get_index_timesection()), using=using)
 
     @classmethod
     def get_timeseries_index_template(cls):
@@ -182,7 +173,8 @@ class TimeseriesRecord(DjelmeRecord):
         return _template_name
 
     @classmethod
-    def get_timeseries_index_name(cls, datestamp: datetime.date | None = None) -> str:
+    def get_index_timesection(cls, datestamp: datetime.date | None = None) -> IndexTimesection:
+        cls.get_meta_setting('DJELME_TIMEPART_COUNT'
         datestamp = datestamp or timezone.now().date()
         # TODO: configure format on cls, fallback to app-wide setting
         dateformat = getattr(
@@ -275,7 +267,7 @@ class TimeseriesRecord(DjelmeRecord):
         :param datetime timestamp: Timestamp for the metric.
         """
         instance = cls(timestamp=timestamp, **kwargs)
-        index = cls.get_timeseries_index_name(timestamp)
+        index = str(cls.get_index_timesection(timestamp))
         instance.save(index=index)
         return instance
 
@@ -285,7 +277,7 @@ class TimeseriesRecord(DjelmeRecord):
         """
         self.timestamp = self.timestamp or timezone.now()
         if not index:
-            index = self.get_timeseries_index_name(date=self.timestamp)
+            index = str(self.get_index_timesection(datestamp=self.timestamp))
 
         cls = self.__class__
         signals.pre_save.send(cls, instance=self, using=using, index=index)
