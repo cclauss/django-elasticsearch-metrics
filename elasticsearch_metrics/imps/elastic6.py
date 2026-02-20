@@ -279,7 +279,7 @@ class Metric(Document, BaseMetric):
 
 
 @dataclasses.dataclass
-class DjelmeElastic6Imp(ProtoTimeseriesImp):
+class DjelmeElastic6Imp:
     """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)"""
 
     imp_name: str

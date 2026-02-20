@@ -17,13 +17,18 @@ _parser.add_argument("passthru_test_args", nargs="*")
 
 
 def run_tests(passthru_test_args=()):
+    import django
+    import django.core.management
+
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE", "elasticsearch_metrics.tests.settings"
     )
-    run(  # using django's test runner
-        ["poetry", "run", "python", "manage.py", "test", *passthru_test_args],
-        check=True,
-    )
+    django.setup()
+    django.core.management.call_command("test", *passthru_test_args)
+    # run(
+    #     ["poetry", "run", "python", "manage.py", "test", *passthru_test_args],
+    #     check=True,
+    # )
 
 
 def run_lint():

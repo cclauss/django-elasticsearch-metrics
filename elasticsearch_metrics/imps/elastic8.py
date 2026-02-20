@@ -313,7 +313,7 @@ class CyclicReport(TimeseriesRecord):
 
 
 @dataclasses.dataclass
-class DjelmeElastic8Imp(ProtoTimeseriesImp):  # for ProtoTimeseriesImpModule.djelme_imp
+class DjelmeElastic8Imp:
     """DjelmeElastic8Imp: the elastic8 implementation of djelme (for use by generic djelme code)"""
 
     imp_name: str
@@ -322,7 +322,7 @@ class DjelmeElastic8Imp(ProtoTimeseriesImp):  # for ProtoTimeseriesImpModule.dje
 
     @property
     def elastic8_client(self):
-        # assumes `configure` was already called
+        # assumes `connections.configure` was already called
         return connections.get_connection(self.imp_name)
 
     def setup_timeseries_indexes(self) -> None:
