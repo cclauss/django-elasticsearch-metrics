@@ -25,7 +25,7 @@ from elasticsearch_metrics.tests._test_util import (
 )
 from elasticsearch_metrics.tests.dummy8app.metrics import (
     Dummy8Event,
-    Dummy8EventWithExplicitTemplateName,
+    Dummy8EventWithExplicitNamePrefix,
     Dummy8Report,
 )
 
@@ -35,7 +35,19 @@ route_prefix_analyzer = analyzer(
 )
 
 
-class ItemViewed(djelme.EventLog):
+class ThingHappened(djelme.EventLog):
+    thing_id: str = Keyword()
+    happen_code: str = Keyword()
+
+    class Index:
+        settings = {"refresh_interval": "-1"}
+
+    class Meta:
+        app_label = "dummy8app"
+        name_prefix = "iv"
+
+
+class ThingHappenings(djelme.PeriodicReport):
     item_id: str = Keyword()
     item_type: str = Keyword()
 
@@ -45,6 +57,7 @@ class ItemViewed(djelme.EventLog):
     class Meta:
         app_label = "dummy8app"
         name_prefix = "iv"
+
 
 
 class TestGetIndexName(SimpleDjelmeTestCase):
@@ -112,7 +125,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
     # regression test
     def test_mappings_are_not_shared(self):
         template1 = Dummy8Event.get_timeseries_index_template()
-        template2 = Dummy8EventWithExplicitTemplateName.get_timeseries_index_template()
+        template2 = Dummy8EventWithExplicitNamePrefix.get_timeseries_index_template()
         assert "my_int" in template1.to_dict()["mappings"]["doc"]["properties"]
         assert "my_keyword" not in template1.to_dict()["mappings"]["doc"]["properties"]
         assert "my_int" not in template2.to_dict()["mappings"]["doc"]["properties"]
@@ -135,7 +148,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_template_name_defined_with_no_template_falls_back_to_default_template(
         self,
     ):
-        template = Dummy8EventWithExplicitTemplateName.get_timeseries_index_template()
+        template = Dummy8EventWithExplicitNamePrefix.get_timeseries_index_template()
         # template name specified in class Meta
         assert template._template_name == "dummy8record"
         # template pattern generated using template name

@@ -22,12 +22,14 @@ use with dates
 >>> timename_from_datestr('2456-07-08T00:01:03+00:00', part_count=5)
 '2456_07_08_00_01'
 
->>> DjelmeIndexName.parse('blarg_myimp_myrecord_1234_56')
+>>> DjelmeIndexName.parse('blarg_myrecord_1234_56')
 """
 
 from __future__ import annotations
 
 __all__ = (
+    "IndexTimesection",
+    "timeparts_from_date",
     "timename",
     "parse_timename",
     "timename_from_datestr",
@@ -46,57 +48,66 @@ _TIMEPART_MIN_LEN: int = 2
 @dataclasses.dataclass
 class IndexTimesection:
     prefix: str
-    imp: str
     recordtype: str
     timeparts: tuple[int, ...] = ()  # empty () -- all time
 
     @classmethod
     def parse(cls, index_name: str) -> IndexTimesection:
         """
-        >>> IndexTimesection.parse('aoeu_myimp_mynote_2001')
-        >>> IndexTimesection.parse('aoeu_myimp_mynote_2001')
+        >>> IndexTimesection.parse('aoeu_mynote_2001')
+        >>> IndexTimesection.parse('aoeu_mynote_2001')
         """
-        _prefix, _imp, _recordtype, _timename = index_name.split(_DELIMITER, maxsplit=2)
+        _prefix, _recordtype, _timename = index_name.split(_DELIMITER, maxsplit=2)
         return IndexTimesection(
-            _prefix, _imp, _recordtype, tuple(parse_timename(_timename))
+            _prefix, _recordtype, tuple(parse_timename(_timename))
         )
 
     @classmethod
-    def format_timepart(cls, timepart: str) -> str:
-        return timepart.replace(_DELIMITER, "")
+    def format_part(cls, timepart: str) -> str:
+        return timepart.replace(_DELIMITER, "").lower()
 
-    def as_wildcard(self) -> str:
+    def __str__(self) -> str:
         """
-        >>> IndexTimesection('aoeu', 'myimp', 'mynote', (9999,22)).as_wildcard()
-        'aoeu_myimp_mynote_9999_22*'
+        >>> str(IndexTimesection('aoeu', 'mynote', (9999,22)))
+        'aoeu_mynote_9999_22*'
         """
         return _DELIMITER.join(
-            (
-                self.format_timepart(_part)
-                for _part in (
+            map(
+                self.format_part,
+                (
                     self.prefix,
-                    self.imp,
                     self.recordtype,
                     timename(self.timeparts),
-                )
+                ),
             )
         )
 
     def broaden_time(self) -> IndexTimesection:
         """
-        >>> _its = IndexTimesection('aoeu', 'myimp', 'mynote', (9999,22))
-        >>> _its.as_wildcard()
-        'aoeu_myimp_mynote_9999_22*'
-        >>> _its.broaden_time().as_wildcard()
-        'aoeu_myimp_mynote_9999*'
-        >>> _its.broaden_time().broaden_time().as_wildcard()
-        'aoeu_myimp_mynote*'
+        >>> _its = IndexTimesection('aoeu', 'mynote', (9999,22))
+        >>> str(_its)
+        'aoeu_mynote_9999_22'
+        >>> str(_its.broaden_time())
+        'aoeu_mynote_9999'
+        >>> str(_its.broaden_time().broaden_time())
+        'aoeu_mynote'
 
         but can't broaden_time past recordtype
-        >>> _its.broaden_time().broaden_time().broaden_time().as_wildcard()
-        'aoeu_myimp_mynote*'
+        >>> str(_its.broaden_time().broaden_time().broaden_time())
+        'aoeu_mynote*'
         """
         return dataclasses.replace(self, time_parts=tuple(self.time_parts[:-1]))
+
+
+def timerange_parts(start: tuple[int, ...], end: tuple[int, ...]) -> tuple[int, ...]:
+    return tuple(_each_timerange_part(start, end))
+
+
+def _each_timerange_part(
+    start: tuple[int, ...], end: tuple[int, ...]
+) -> Iterator[int, ...]:
+    for _startpart, _endpart in zip(start, end, strict=False):
+        yield _startpart if (_startpart == _endpart) else None
 
 
 def timename(*timeparts: int) -> str:
@@ -148,11 +159,19 @@ def timename_from_date(given_date: datetime.date, part_count: int) -> str:
     >>> timename_from_date(datetime.date(3456, 7, 8), 2)
     '3456_07'
     """
-    _timeparts = itertools.islice(_timeparts_from_date(given_date), part_count)
+    _timeparts = itertools.islice(_each_timepart_from_date(given_date), part_count)
     return timename(*_timeparts)
 
 
-def _timeparts_from_date(given_date: datetime.date) -> Iterator[int]:
+def timeparts_from_date(given_date: datetime.date, part_count: int) -> tuple[str, ...]:
+    """
+    >>> timeparts_from_date(datetime.date(3456, 7, 8), 2)
+    ('3456', '07')
+    """
+    return tuple(itertools.islice(_each_timepart_from_date(given_date), part_count))
+
+
+def _each_timepart_from_date(given_date: datetime.date) -> Iterator[int]:
     yield given_date.year
     yield given_date.month
     yield given_date.day

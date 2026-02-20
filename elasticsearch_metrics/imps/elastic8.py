@@ -14,7 +14,7 @@
 __all__ = (
     "TimeseriesRecord",
     "EventLog",
-    "PeriodicReport",
+    "CyclicReport",
 )
 from collections.abc import Iterator
 import dataclasses
@@ -25,19 +25,18 @@ from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
-from elasticsearch8.dsl import Document, connections
+from elasticsearch8.dsl import Document, connections, Keyword
 from elasticsearch8.dsl._sync.document import IndexMeta
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import timeseries_type_registry
 from elasticsearch_metrics.protocols import ProtoTimeseriesImp
-from elasticsearch_metrics.util.index_name import IndexTimesection
-
+from elasticsearch_metrics.util.index_name import IndexTimesection, timeparts_from_date
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TIMEPART_COUNT = 2  # xxxx_xx
+_DEFAULT_TIMEPART_DEPTH = 2  # xxxx_xx
 
 
 class _DjelmeRecordMeta(IndexMeta):
@@ -74,6 +73,9 @@ class _DjelmeRecordMeta(IndexMeta):
                         setattr(_cls.Meta, _attrname, _attrval)
             else:
                 _cls.Meta = _doc_type_meta
+        # register non-abstract types
+        if not _cls.is_abstract:
+            timeseries_type_registry.register_recordtype(_cls.app_label, _cls)
         return _cls
 
     def _get_meta_attr(self, attr_name: str, default=None) -> bool:
@@ -139,7 +141,9 @@ class TimeseriesRecord(DjelmeRecord):
         """
         assert not cls.is_abstract
         cls.sync_index_template(using=using)
-        return super().init(index=index or str(cls.get_index_timesection()), using=using)
+        return super().init(
+            index=index or str(cls.get_index_timesection()), using=using
+        )
 
     @classmethod
     def get_timeseries_index_template(cls):
@@ -164,7 +168,7 @@ class TimeseriesRecord(DjelmeRecord):
 
     @classmethod
     def get_template_name(cls) -> str:
-        _template_name = cls.get_meta_setting("template_name")
+        # _template_name = cls._get_meta_attr("template_name")
         if not _template_name:
             # If template_name not specified in class Meta,
             # compute it as <app label>_<lowercased class name>
@@ -173,15 +177,23 @@ class TimeseriesRecord(DjelmeRecord):
         return _template_name
 
     @classmethod
-    def get_index_timesection(cls, datestamp: datetime.date | None = None) -> IndexTimesection:
-        cls.get_meta_setting('DJELME_TIMEPART_COUNT'
-        datestamp = datestamp or timezone.now().date()
-        # TODO: configure format on cls, fallback to app-wide setting
-        dateformat = getattr(
-            settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
+    def full_timesection(cls) -> IndexTimesection:
+        """
+        """
+        return IndexTimesection(
+            prefix=cls.app_label,
+            recordtype=IndexTimesection.format_timepart(cls.__name__),
         )
-        date_formatted = datetime.date.strftime(dateformat)
-        return "{}_{}".format(cls._template_name, date_formatted)
+
+    @classmethod
+    def _index_section_for_timespan(
+        cls, start_timeparts: tuple[int, ...], end_timeparts: tuple[int, ...]
+    ) -> IndexTimesection:
+        """
+        """
+        cls._get_meta_attr("timepart_depth", _DEFAULT_TIMEPART_DEPTH)
+        return cls.full_timesection().replace(timeparts=...)
+
 
     ######
     @classmethod
@@ -298,11 +310,11 @@ class TimeseriesRecord(DjelmeRecord):
 
 class EventLog(TimeseriesRecord):
     timestamp: datetime.datetime
-    event_label: str
+    event_label: str = elastic8.Keyword()
     event_tags: list[str]
 
 
-class PeriodicReport(TimeseriesRecord):
+class CyclicReport(TimeseriesRecord):
     timestamp: datetime.datetime
     report_label: str
     report_coverage: str

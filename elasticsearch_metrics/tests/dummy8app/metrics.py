@@ -1,6 +1,6 @@
 from elasticsearch_metrics.imps.elastic8 import (
     EventLog,
-    PeriodicReport,
+    CyclicReport,
 )
 
 
@@ -15,5 +15,5 @@ class Dummy8EventWithExplicitNamePrefix(EventLog):
         name_prefix = "dummy8evenz"
 
 
-class Dummy8Report(PeriodicReport):
+class Dummy8Report(CyclicReport):
     intestines: int

@@ -1,4 +1,7 @@
-"""elasticsearch_metrics.imps.elastic6: store events and reports in elasticsearch 6"""
+"""elasticsearch_metrics.imps.elastic6: store events and reports in elasticsearch 6
+
+consider this code frozen/deprecated -- will be removed once no longer needed
+"""
 
 from collections import ChainMap
 from collections.abc import Iterator
