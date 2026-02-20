@@ -25,19 +25,18 @@ from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
-from elasticsearch8.dsl import Document, connections, Keyword
+from elasticsearch8.dsl import Document, connections, Keyword, IndexTemplate
 from elasticsearch8.dsl._sync.document import IndexMeta
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import timeseries_type_registry
 from elasticsearch_metrics.protocols import ProtoTimeseriesImp
-from elasticsearch_metrics.util.index_name import IndexTimesection, timeparts_from_date
+from elasticsearch_metrics.util import timeseries_naming
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEPART_DEPTH = 2  # xxxx_xx
-
 
 class _DjelmeRecordMeta(IndexMeta):
     """Metaclass for the base `DjelmeRecord` class.
@@ -73,7 +72,7 @@ class _DjelmeRecordMeta(IndexMeta):
                         setattr(_cls.Meta, _attrname, _attrval)
             else:
                 _cls.Meta = _doc_type_meta
-        # register non-abstract types
+        # register non-abstract subtypes
         if not _cls.is_abstract:
             timeseries_type_registry.register_recordtype(_cls.app_label, _cls)
         return _cls
@@ -128,11 +127,6 @@ class TimeseriesRecord(DjelmeRecord):
     class Meta:
         abstract = True
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        if not cls.is_abstract:
-            timeseries_type_registry.register_recordtype(cls.app_label, cls)
-
     @classmethod
     def init(cls, index=None, using=None):
         """Create the index and populate the mappings in elasticsearch.
@@ -142,60 +136,56 @@ class TimeseriesRecord(DjelmeRecord):
         assert not cls.is_abstract
         cls.sync_index_template(using=using)
         return super().init(
-            index=index or str(cls.get_index_timesection()), using=using
+            index=index or str(cls.get_index_timepattern()), using=using
         )
 
     @classmethod
-    def get_timeseries_index_template(cls):
-        """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
+    @property
+    def timeseries_template(cls) -> IndexTemplate:
         return cls._index.as_template(
-            template_name=cls._template_name,
-            pattern=cls.index_name_wildcard,
+            template_name=cls.timeseries_template_name,
+            pattern=cls.timeseries_index_pattern,
         )
 
     @classmethod
     @property
-    def template_name(cls) -> str:
-        return (
-            cls._get_meta_attr("template_name")
-            or f"{cls.app_label}_{cls.__name__.lower()}"
-        )
+    def timeseries_template_name(cls) -> str:
+        return timeseries_naming.format_template_name(cls.timeseries_index_prefix, cls.__name__.lower())
 
     @classmethod
     @property
-    def index_name_wildcard(cls) -> str:
-        return f"{cls.template_name}_*"
+    def timeseries_index_prefix(cls) -> str:
+        return cls._get_meta_attr("index_name_prefix") or cls.app_label
 
     @classmethod
-    def get_template_name(cls) -> str:
-        # _template_name = cls._get_meta_attr("template_name")
-        if not _template_name:
-            # If template_name not specified in class Meta,
-            # compute it as <app label>_<lowercased class name>
-            _cls_name = cls.__name__.lower()
-            _template_name = f"{cls.app_label}_{_cls_name}"
-        return _template_name
+    @property
+    def timeseries_index_pattern(cls) -> str:
+        return timeseries_naming.format_pattern(
+            prefix=cls.timeseries_index_prefix,
+            recordtype=cls.__name__,
+        )
 
     @classmethod
-    def full_timesection(cls) -> IndexTimesection:
+    def full_timepattern(cls) -> TimeseriesIndexNamePattern:
         """
         """
-        return IndexTimesection(
+        return TimeseriesIndexNamePattern(
             prefix=cls.app_label,
-            recordtype=IndexTimesection.format_timepart(cls.__name__),
+            recordtype=TimeseriesIndexNamePattern.format_timepart(cls.__name__),
         )
 
     @classmethod
-    def _index_section_for_timespan(
+    def _timepattern_for_timespan(
         cls, start_timeparts: tuple[int, ...], end_timeparts: tuple[int, ...]
-    ) -> IndexTimesection:
+    ) -> TimeseriesIndexNamePattern:
         """
         """
         cls._get_meta_attr("timepart_depth", _DEFAULT_TIMEPART_DEPTH)
-        return cls.full_timesection().replace(timeparts=...)
-
+        return cls.full_timepattern().replace(timeparts=...)
 
     ######
+    # TODO: revisit the following
+
     @classmethod
     def sync_index_template(cls, using=None):
         """Sync the index template for this metric in Elasticsearch."""
@@ -279,7 +269,7 @@ class TimeseriesRecord(DjelmeRecord):
         :param datetime timestamp: Timestamp for the metric.
         """
         instance = cls(timestamp=timestamp, **kwargs)
-        index = str(cls.get_index_timesection(timestamp))
+        index = str(cls.get_index_timepattern(timestamp))
         instance.save(index=index)
         return instance
 
@@ -289,7 +279,7 @@ class TimeseriesRecord(DjelmeRecord):
         """
         self.timestamp = self.timestamp or timezone.now()
         if not index:
-            index = str(self.get_index_timesection(datestamp=self.timestamp))
+            index = str(self.get_index_timepattern(datestamp=self.timestamp))
 
         cls = self.__class__
         signals.pre_save.send(cls, instance=self, using=using, index=index)
@@ -305,12 +295,12 @@ class TimeseriesRecord(DjelmeRecord):
         use the metric's template pattern as the default index
         """
         assert not cls.is_abstract
-        return index or cls.index_name_wildcard
+        return index or cls.timeseries_index_pattern
 
 
 class EventLog(TimeseriesRecord):
     timestamp: datetime.datetime
-    event_label: str = elastic8.Keyword()
+    event_label: str = Keyword()
     event_tags: list[str]
 
 
@@ -345,7 +335,7 @@ class DjelmeElastic8Imp(
 
     def teardown_timeseries_indexes(self) -> None:
         for _metric_type in self._each_recordtype():
-            _indexname_wildcard = _metric_type.index_name_wildcard
+            _indexname_wildcard = _metric_type.timeseries_index_pattern
             _templatename = _metric_type._template_name
             self.elastic6_client.indices.delete(index=_indexname_wildcard)
             try:

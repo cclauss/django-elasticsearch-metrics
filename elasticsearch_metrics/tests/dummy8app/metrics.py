@@ -12,7 +12,7 @@ class Dummy8EventWithExplicitNamePrefix(EventLog):
     intenzity: int
 
     class Meta:
-        name_prefix = "dummy8evenz"
+        index_name_prefix = "dummy8evenz"
 
 
 class Dummy8Report(CyclicReport):

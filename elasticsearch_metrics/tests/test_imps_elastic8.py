@@ -44,10 +44,11 @@ class ThingHappened(djelme.EventLog):
 
     class Meta:
         app_label = "dummy8app"
-        name_prefix = "iv"
+        index_name_prefix = "iv"
 
 
-class ThingHappenings(djelme.PeriodicReport):
+# TODO: tests using ThingHappeningsReport
+class ThingHappeningsReport(djelme.CyclicReport):
     item_id: str = Keyword()
     item_type: str = Keyword()
 
@@ -56,15 +57,14 @@ class ThingHappenings(djelme.PeriodicReport):
 
     class Meta:
         app_label = "dummy8app"
-        name_prefix = "iv"
-
+        index_name_prefix = "iv"
 
 
 class TestGetIndexName(SimpleDjelmeTestCase):
     def test_get_index_name(self):
         date = dt.date(2020, 2, 14)
         assert (
-            ItemViewed.get_index_name(date=date)
+            ThingHappened.get_index_name(date=date)
             == "osf_metrics_preprintviews_2020.02.14"
         )
 
@@ -72,27 +72,27 @@ class TestGetIndexName(SimpleDjelmeTestCase):
         with self.settings(ELASTICSEARCH_METRICS_DATE_FORMAT="%Y-%m-%d"):
             date = dt.date(2020, 2, 14)
             assert (
-                ItemViewed.get_index_name(date=date)
+                ThingHappened.get_index_name(date=date)
                 == "osf_metrics_preprintviews_2020-02-14"
             )
 
     def test_get_index_name_gets_index_for_today_by_default(self):
         today = timezone.now().date()
         today_formatted = today.strftime("%Y.%m.%d")
-        assert ItemViewed.get_index_name() == "osf_metrics_preprintviews_{}".format(
+        assert ThingHappened.get_index_name() == "osf_metrics_preprintviews_{}".format(
             today_formatted
         )
 
 
 class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_get_index_template_returns_template_with_correct_name_and_pattern(self):
-        template = ItemViewed.get_timeseries_index_template()
+        template = ThingHappened.get_timeseries_index_template()
         assert isinstance(template, IndexTemplate)
         assert template._template_name == "iv"
         assert "osf_metrics_preprintviews_*" in template.to_dict()["index_patterns"]
 
     def test_get_index_template_respects_index_settings(self):
-        template = ItemViewed.get_timeseries_index_template()
+        template = ThingHappened.get_timeseries_index_template()
         assert template._index.to_dict()["settings"] == {
             "refresh_interval": "-1",
             "analysis": {
@@ -112,7 +112,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
         }
 
     def test_get_index_template_creates_template_with_mapping(self):
-        template = ItemViewed.get_timeseries_index_template()
+        template = ThingHappened.get_timeseries_index_template()
         mappings = template.to_dict()["mappings"]
         assert mappings["doc"]["_source"]["enabled"] is False
         properties = mappings["doc"]["properties"]
@@ -189,7 +189,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 class TestRecord(MockSaveTestCase):
     def test_calls_save(self):
         timestamp = dt.datetime(2017, 8, 21)
-        p = ItemViewed.record(timestamp=timestamp, provider_id="abc12")
+        p = ThingHappened.record(timestamp=timestamp, provider_id="abc12")
         assert self.mocked_es8_save.call_count == 1
         assert p.timestamp == timestamp
         assert p.provider_id == "abc12"
@@ -199,19 +199,19 @@ class TestRecord(MockSaveTestCase):
         fake_now = dt.datetime(2016, 8, 21)
         mock_now.return_value = fake_now
 
-        p = ItemViewed.record(provider_id="abc12")
+        p = ThingHappened.record(provider_id="abc12")
         assert self.mocked_es8_save.call_count == 1
         assert p.timestamp == fake_now
 
 
 class TestSignals(MockSaveTestCase):
-    @unittest.mock.patch.object(ItemViewed, "get_timeseries_index_template")
+    @unittest.mock.patch.object(ThingHappened, "get_timeseries_index_template")
     def test_create_record_sends_signals(self, mock_get_index_template):
         mock_pre_index_template_listener = unittest.mock.Mock()
         mock_post_index_template_listener = unittest.mock.Mock()
         signals.pre_index_template_create.connect(mock_pre_index_template_listener)
         signals.post_index_template_create.connect(mock_post_index_template_listener)
-        ItemViewed.sync_index_template()
+        ThingHappened.sync_index_template()
         assert mock_pre_index_template_listener.call_count == 1
         assert mock_post_index_template_listener.call_count == 1
         pre_call_kwargs = mock_pre_index_template_listener.call_args[1]
@@ -225,30 +225,30 @@ class TestSignals(MockSaveTestCase):
     def test_save_sends_signals(self):
         mock_pre_save_listener = unittest.mock.Mock()
         mock_post_save_listener = unittest.mock.Mock()
-        signals.pre_save.connect(mock_pre_save_listener, sender=ItemViewed)
-        signals.post_save.connect(mock_post_save_listener, sender=ItemViewed)
+        signals.pre_save.connect(mock_pre_save_listener, sender=ThingHappened)
+        signals.post_save.connect(mock_post_save_listener, sender=ThingHappened)
 
         provider_id = "12345"
         user_id = "abcde"
         preprint_id = "zyxwv"
-        doc = ItemViewed(
+        doc = ThingHappened(
             provider_id=provider_id, user_id=user_id, preprint_id=preprint_id
         )
         doc.save()
 
         assert mock_pre_save_listener.call_count == 1
         pre_save_kwargs = mock_pre_save_listener.call_args[1]
-        assert isinstance(pre_save_kwargs["instance"], ItemViewed)
+        assert isinstance(pre_save_kwargs["instance"], ThingHappened)
         assert "index" in pre_save_kwargs
         assert "using" in pre_save_kwargs
-        assert pre_save_kwargs["sender"] is ItemViewed
+        assert pre_save_kwargs["sender"] is ThingHappened
 
         assert mock_post_save_listener.call_count == 1
         post_save_kwargs = mock_pre_save_listener.call_args[1]
-        assert isinstance(post_save_kwargs["instance"], ItemViewed)
+        assert isinstance(post_save_kwargs["instance"], ThingHappened)
         assert "index" in post_save_kwargs
         assert "using" in post_save_kwargs
-        assert post_save_kwargs["sender"] is ItemViewed
+        assert post_save_kwargs["sender"] is ThingHappened
 
 
 class TestCreateDocument(RealElasticTestCase):
@@ -260,15 +260,15 @@ class TestCreateDocument(RealElasticTestCase):
         provider_id = "12345"
         user_id = "abcde"
         preprint_id = "zyxwv"
-        doc = ItemViewed(
+        doc = ThingHappened(
             provider_id=provider_id, user_id=user_id, preprint_id=preprint_id
         )
         doc.save()
-        document = ItemViewed.get(id=doc.meta.id, index=ItemViewed.get_index_name())
+        document = ThingHappened.get(id=doc.meta.id, index=ThingHappened.get_index_name())
         assert document is not None  # TODO: more thoroughly
 
         # index mappings should match the index template
-        name = ItemViewed.get_index_name()
+        name = ThingHappened.get_index_name()
         mapping = self.es8_client.indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["doc"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
@@ -283,8 +283,8 @@ class TestInit(RealElasticTestCase, auto_setup_imps=False):
         return connections.get_connection("default")
 
     def test_init(self):
-        ItemViewed.init()
-        name = ItemViewed.get_index_name()
+        ThingHappened.init()
+        name = ThingHappened.get_index_name()
         mapping = self.es8_client.indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["doc"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
@@ -294,20 +294,20 @@ class TestInit(RealElasticTestCase, auto_setup_imps=False):
 
     def test_check_index_template(self):
         with self.assertRaises(IndexTemplateNotFoundError):
-            assert ItemViewed.check_index_template() is False
-        ItemViewed.sync_index_template()
-        assert ItemViewed.check_index_template() is True
+            assert ThingHappened.check_index_template() is False
+        ThingHappened.sync_index_template()
+        assert ThingHappened.check_index_template() is True
 
         # When settings change, template is out of sync
-        ItemViewed._index.settings(
+        ThingHappened._index.settings(
             **{"refresh_interval": "1s", "number_of_shards": 1, "number_of_replicas": 2}
         )
         with self.assertRaises(IndexTemplateOutOfSyncError) as excinfo:
-            assert ItemViewed.check_index_template() is False
+            assert ThingHappened.check_index_template() is False
         error = excinfo.exception
         assert error.settings_in_sync is False
         assert error.mappings_in_sync is True
         assert error.patterns_in_sync is True
 
-        ItemViewed.sync_index_template()
-        assert ItemViewed.check_index_template() is True
+        ThingHappened.sync_index_template()
+        assert ThingHappened.check_index_template() is True
