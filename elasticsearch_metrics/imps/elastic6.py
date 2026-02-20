@@ -283,16 +283,13 @@ class DjelmeElastic6Imp(ProtoTimeseriesImp):
     """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)"""
 
     imp_name: str
-    imp_config: dict[str, str]
+    imp_kwargs: dict[str, str]
     namespace_prefix: str = ""
 
     @property
     def elastic6_client(self):
-        # assumes `configure` was already called
+        # assumes `connections.configure` was already called
         return connections.get_connection(self.imp_name)
-
-    def configure(self) -> None:
-        connections.configure(**{self.imp_name: self.imp_config})
 
     def setup_timeseries_indexes(self) -> None:
         for _metric_type in self._each_metric_type():
@@ -316,4 +313,9 @@ class DjelmeElastic6Imp(ProtoTimeseriesImp):
             yield _metric
 
 
-djelme_imp_from_config = DjelmeElastic6Imp  # for ProtoTimeseriesImpModule
+djelme_imp = DjelmeElastic6Imp  # for ProtoTimeseriesImpModule
+
+def djelme_when_ready(  # for ProtoTimeseriesImpModule
+    imps: Iterator[ProtoTimeseriesImp],
+) -> None:
+    connections.configure(**{_imp.imp_name: _imp.imp_kwargs for _imp in imps})

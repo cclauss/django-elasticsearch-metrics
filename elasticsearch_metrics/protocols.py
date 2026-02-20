@@ -1,5 +1,5 @@
 from __future__ import annotations
-from collections.abc import Iterator
+import collections
 import typing
 
 __all__ = (
@@ -9,15 +9,22 @@ __all__ = (
 
 
 class ProtoTimeseriesImp(typing.Protocol):
-    def each_timeseries_record_type(self) -> Iterator[type[ProtoTimeseriesRecord]]: ...
+    @property
+    def imp_name(self) -> str: ...
+    @property
+    def imp_kwargs(self) -> dict[str, str]: ...
+
+    def each_timeseries_record_type(
+        self,
+    ) -> collections.abc.Iterator[type[ProtoTimeseriesRecord]]: ...
     def each_timeseries_index(self): ...
+
     #
     def show_timeseries_indexes(self): ...
     def setup_timeseries_indexes(self) -> None: ...
     def teardown_timeseries_indexes(self) -> None: ...
     def record_timeseries_record(self, record_doc: ProtoTimeseriesRecord) -> ...: ...
     def check_timeseries_indexes(self): ...
-    def configure(self) -> None: ...
 
 
 class ProtoTimeseriesRecord(typing.Protocol):
@@ -28,8 +35,11 @@ class ProtoTimeseriesRecord(typing.Protocol):
 @typing.runtime_checkable
 class ProtoTimeseriesImpModule(typing.Protocol):
     @staticmethod
-    def djelme_imp_from_config(
+    def djelme_imp(
         imp_name: str,
-        imp_config: dict[str, str],
+        imp_kwargs: dict[str, str],
         namespace_prefix: str = "",
     ) -> ProtoTimeseriesImp: ...
+
+    @staticmethod
+    def djelme_when_ready(imps: collections.abc.Iterable[ProtoTimeseriesImp]) -> None: ...

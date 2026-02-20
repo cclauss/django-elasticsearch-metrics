@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+import collections
 
 from django.apps import AppConfig
 from django.conf import settings
@@ -6,41 +6,40 @@ from django.utils.module_loading import autodiscover_modules
 
 from elasticsearch_metrics.registry import timeseries_type_registry
 
-_IMPCONFIG_SETTINGS_KEY = "DJELMETRICS_TIMESERIES_IMPS"
+_IMPS_KEY = "DJELMETRICS_TIMESERIES_IMPS"
 
 
 class ElasticsearchMetricsConfig(AppConfig):
     name = "elasticsearch_metrics"
 
     def ready(self) -> None:
-        for _imp_name, _imp_module_path, _imp_config in each_timeseries_imp_config():
+        for (
+            _imp_name,
+            _imp_module_path,
+            _imp_kwargs,
+        ) in _each_timeseries_settings_entry():
             timeseries_type_registry.register_imp(
-                _imp_name, _imp_module_path, _imp_config
+                _imp_name, _imp_module_path, _imp_kwargs
             )
-            timeseries_type_registry.get_imp(_imp_name).configure()
         autodiscover_modules("metrics")
+        timeseries_type_registry.on_app_ready()
 
 
 ###
 # accessing django settings
 
-def each_timeseries_imp_config() -> Iterator[tuple[str, str, dict[str, str]]]:
-    for _imp_name in getattr(settings, _IMPCONFIG_SETTINGS_KEY, ()):
-        (_imp_module_path, _imp_config) = get_timeseries_imp_config(_imp_name)
-        yield (_imp_name, _imp_module_path, _imp_config)
 
-
-def get_timeseries_imp_config(imp_name: str) -> tuple[str, dict[str, str]]:
-    try:
-        _imps_setting = getattr(settings, _IMPCONFIG_SETTINGS_KEY)
-    except AttributeError as _error:
-        raise ValueError(f"no `settings.{_IMPCONFIG_SETTINGS_KEY}` found") from _error
-    (_imp_module_path, _imp_config) = _imps_setting.get(imp_name, ('', {}))
-    # TODO: better errors
-    assert isinstance(_imp_module_path, str)
-    assert isinstance(_imp_config, dict)
-    assert all(
-        isinstance(_k, str) and isinstance(_v, str)
-        for _k, _v in _imp_config.items()
-    )
-    return (_imp_module_path, _imp_config)
+def _each_timeseries_settings_entry() -> (
+    collections.abc.Iterator[tuple[str, str, dict[str, str]]]
+):
+    for _imp_name, (_imp_module_path, _imp_kwargs) in getattr(
+        settings, _IMPS_KEY, {}
+    ).items():
+        # TODO: better errors
+        assert isinstance(_imp_module_path, str)
+        assert isinstance(_imp_kwargs, dict)
+        assert all(
+            isinstance(_k, str) and isinstance(_v, str)
+            for _k, _v in _imp_kwargs.items()
+        )
+        yield (_imp_name, _imp_module_path, _imp_kwargs)

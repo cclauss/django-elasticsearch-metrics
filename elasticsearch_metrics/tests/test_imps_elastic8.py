@@ -26,7 +26,8 @@ from elasticsearch_metrics.tests._test_util import (
 from elasticsearch_metrics.tests.dummy8app.metrics import (
     Dummy8Event,
     Dummy8EventWithExplicitNamePrefix,
-    Dummy8Report,
+    ThingHappened,
+    ThingHappeningsReport,
 )
 
 route_prefix_analyzer = analyzer(
@@ -35,36 +36,11 @@ route_prefix_analyzer = analyzer(
 )
 
 
-class ThingHappened(djelme.EventLog):
-    thing_id: str = Keyword()
-    happen_code: str = Keyword()
-
-    class Index:
-        settings = {"refresh_interval": "-1"}
-
-    class Meta:
-        app_label = "dummy8app"
-        index_name_prefix = "iv"
-
-
-# TODO: tests using ThingHappeningsReport
-class ThingHappeningsReport(djelme.CyclicReport):
-    item_id: str = Keyword()
-    item_type: str = Keyword()
-
-    class Index:
-        settings = {"refresh_interval": "-1"}
-
-    class Meta:
-        app_label = "dummy8app"
-        index_name_prefix = "iv"
-
-
 class TestGetIndexName(SimpleDjelmeTestCase):
     def test_get_index_name(self):
         date = dt.date(2020, 2, 14)
         assert (
-            ThingHappened.get_index_name(date=date)
+            ThingHappened.format_timeseries_index_name(date=date)
             == "osf_metrics_preprintviews_2020.02.14"
         )
 
@@ -72,14 +48,14 @@ class TestGetIndexName(SimpleDjelmeTestCase):
         with self.settings(ELASTICSEARCH_METRICS_DATE_FORMAT="%Y-%m-%d"):
             date = dt.date(2020, 2, 14)
             assert (
-                ThingHappened.get_index_name(date=date)
+                ThingHappened.format_timeseries_index_name(date=date)
                 == "osf_metrics_preprintviews_2020-02-14"
             )
 
     def test_get_index_name_gets_index_for_today_by_default(self):
         today = timezone.now().date()
         today_formatted = today.strftime("%Y.%m.%d")
-        assert ThingHappened.get_index_name() == "osf_metrics_preprintviews_{}".format(
+        assert ThingHappened.format_timeseries_index_name() == "osf_metrics_preprintviews_{}".format(
             today_formatted
         )
 
@@ -117,10 +93,9 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
         assert mappings["doc"]["_source"]["enabled"] is False
         properties = mappings["doc"]["properties"]
         assert "timestamp" in properties
-        assert properties["timestamp"] == {"doc_values": True, "type": "date"}
-        assert properties["provider_id"] == {"type": "keyword", "index": True}
-        assert properties["user_id"] == {"type": "keyword", "index": True}
-        assert properties["preprint_id"] == {"type": "keyword", "index": True}
+        assert properties["timestamp"] == {"type": "date"}
+        assert properties["thing_id"] == {"type": "keyword"}
+        assert properties["happen_code"] == {"type": "keyword"}
 
     # regression test
     def test_mappings_are_not_shared(self):
@@ -189,17 +164,17 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 class TestRecord(MockSaveTestCase):
     def test_calls_save(self):
         timestamp = dt.datetime(2017, 8, 21)
-        p = ThingHappened.record(timestamp=timestamp, provider_id="abc12")
+        p = ThingHappened.record(timestamp=timestamp, thing_id="abc12")
         assert self.mocked_es8_save.call_count == 1
         assert p.timestamp == timestamp
-        assert p.provider_id == "abc12"
+        assert p.thing_id == "abc12"
 
     @unittest.mock.patch.object(timezone, "now")
     def test_defaults_timestamp_to_now(self, mock_now):
         fake_now = dt.datetime(2016, 8, 21)
         mock_now.return_value = fake_now
 
-        p = ThingHappened.record(provider_id="abc12")
+        p = ThingHappened.record(thing_id="abc12")
         assert self.mocked_es8_save.call_count == 1
         assert p.timestamp == fake_now
 
@@ -228,12 +203,9 @@ class TestSignals(MockSaveTestCase):
         signals.pre_save.connect(mock_pre_save_listener, sender=ThingHappened)
         signals.post_save.connect(mock_post_save_listener, sender=ThingHappened)
 
-        provider_id = "12345"
-        user_id = "abcde"
-        preprint_id = "zyxwv"
-        doc = ThingHappened(
-            provider_id=provider_id, user_id=user_id, preprint_id=preprint_id
-        )
+        thing_id = "12345"
+        happen_code = "zyxwv"
+        doc = ThingHappened(thing_id=thing_id, happen_code=happen_code)
         doc.save()
 
         assert mock_pre_save_listener.call_count == 1
@@ -257,14 +229,13 @@ class TestCreateDocument(RealElasticTestCase):
         return connections.get_connection("default")
 
     def test_create_document(self):
-        provider_id = "12345"
-        user_id = "abcde"
-        preprint_id = "zyxwv"
-        doc = ThingHappened(
-            provider_id=provider_id, user_id=user_id, preprint_id=preprint_id
-        )
+        thing_id = "12345"
+        happen_code = "zyxwv"
+        doc = ThingHappened(thing_id=thing_id, happen_code=happen_code)
         doc.save()
-        document = ThingHappened.get(id=doc.meta.id, index=ThingHappened.get_index_name())
+        document = ThingHappened.get(
+            id=doc.meta.id, index=ThingHappened.format_timeseries_index_name()
+        )
         assert document is not None  # TODO: more thoroughly
 
         # index mappings should match the index template
@@ -272,9 +243,8 @@ class TestCreateDocument(RealElasticTestCase):
         mapping = self.es8_client.indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["doc"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
-        assert properties["provider_id"] == {"type": "keyword"}
-        assert properties["user_id"] == {"type": "keyword"}
-        assert properties["preprint_id"] == {"type": "keyword"}
+        assert properties["thing_id"] == {"type": "keyword"}
+        assert properties["happen_code"] == {"type": "keyword"}
 
 
 class TestInit(RealElasticTestCase, auto_setup_imps=False):
@@ -288,9 +258,8 @@ class TestInit(RealElasticTestCase, auto_setup_imps=False):
         mapping = self.es8_client.indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["doc"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
-        assert properties["provider_id"] == {"type": "keyword"}
-        assert properties["user_id"] == {"type": "keyword"}
-        assert properties["preprint_id"] == {"type": "keyword"}
+        assert properties["thing_id"] == {"type": "keyword"}
+        assert properties["happen_code"] == {"type": "keyword"}
 
     def test_check_index_template(self):
         with self.assertRaises(IndexTemplateNotFoundError):

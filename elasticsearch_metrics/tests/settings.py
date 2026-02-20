@@ -21,13 +21,13 @@ DJELMETRICS_TIMESERIES_IMPS = {
             "hosts": os.environ.get("ELASTICSEARCH6_HOST", ""),
         },
     ],
-    "elastic8foo": [
+    "elastic8events": [
         "elasticsearch_metrics.imps.elastic8",
         {
             "hosts": os.environ.get("ELASTICSEARCH8_HOST", ""),
         },
     ],
-    "elastic8bar": [
+    "elastic8reports": [
         "elasticsearch_metrics.imps.elastic8",
         {
             "hosts": os.environ.get("ELASTICSEARCH8_HOST", ""),

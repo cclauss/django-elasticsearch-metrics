@@ -1,10 +1,10 @@
 import doctest
 
-import elasticsearch_metrics.util.index_name
+import elasticsearch_metrics.util.timeseries_naming
 import elasticsearch_metrics.imps.elastic8
 
 _MODULES_WITH_DOCTESTS = (
-    elasticsearch_metrics.util.index_name,
+    elasticsearch_metrics.util.timeseries_naming,
     elasticsearch_metrics.imps.elastic8,
 )
 

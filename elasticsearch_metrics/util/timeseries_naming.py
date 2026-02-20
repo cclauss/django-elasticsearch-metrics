@@ -2,19 +2,6 @@
 
 for naming timeseries indexes with lexical time coverage
 (so an index-name wildcard can be used to query several indexes)
-
-
-use with dates
->>> timename_from_date(datetime.date(3456, 7, 8), part_count=2)
-'3456_07'
->>> timename_from_datestr('3456-07-08', 2)
-'3456_07'
->>> timename_from_datestr('3456-07-08', 5)
-'3456_07_08_00_00'
->>> timename_from_datestr('2456-07-08T00:01:03+00:00', part_count=5)
-'2456_07_08_00_01'
-
->>> DjelmeIndexName.parse('blarg_myrecord_1234_56')
 """
 
 from __future__ import annotations
@@ -36,7 +23,7 @@ import itertools
 
 _DELIMITER: str = "_"
 _TIMEPART_MIN_LEN: int = 2
-_TEMPLATE_NAME_SUFFIX = '_template'
+_TEMPLATE_NAME_SUFFIX = "_template"
 
 
 def format_index_name(
@@ -48,12 +35,14 @@ def format_index_name(
     >>> format_index_name('aoeu', 'mynote', (9999,22))
     'aoeu_mynote_9999_22_'
     """
-    return _DELIMITER.join((
+    _parts = [
         format_namepart(prefix),
         format_namepart(recordtype),
-        _format_timename(timeparts),
-        ''  # always end with the delimiter, to match wildcard pattern `foo_bar_123_*`
-    ))
+    ]
+    if timeparts:
+        _parts.append(_format_timename(*timeparts))
+    _parts.append('')  # always end with the delimiter, to match wildcard pattern `foo_bar_123_*`
+    return _DELIMITER.join(_parts)
 
 
 def format_index_pattern(
@@ -65,12 +54,7 @@ def format_index_pattern(
     >>> format_index_pattern('aoeu', 'mynote', (9999,22))
     'aoeu_mynote_9999_22_*'
     """
-    return _DELIMITER.join((
-        format_namepart(prefix),
-        format_namepart(recordtype),
-        _format_timename(timeparts),
-        '*'
-    ))
+    return f'{format_index_name(prefix, recordtype, timeparts)}*'
 
 
 def format_template_name(
@@ -81,14 +65,12 @@ def format_template_name(
     >>> format_template_name('blah', 'fleh')
     'blah_fleh_template'
     """
-    return _DELIMITER.join((
-        format_namepart(prefix),
-        format_namepart(recordtype),
-        _TEMPLATE_NAME_SUFFIX
-    ))
+    return _DELIMITER.join(
+        (format_namepart(prefix), format_namepart(recordtype), _TEMPLATE_NAME_SUFFIX)
+    )
 
 
-def format_namepart(cls, namepart: str) -> str:
+def format_namepart(namepart: str) -> str:
     return namepart.replace(_DELIMITER, "").lower()
 
 
@@ -110,6 +92,7 @@ def parse_index_pattern(given_pattern: str) -> TimeseriesIndexNamePattern:
     """
     _prefix, _recordtype, _timename = given_pattern.split(_DELIMITER, maxsplit=2)
     return (_prefix, _recordtype, tuple(_parse_timename(_timename)))
+
 
 def broaden_time(self) -> TimeseriesIndexNamePattern:
     """

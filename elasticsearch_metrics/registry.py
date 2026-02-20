@@ -1,5 +1,4 @@
-from collections import defaultdict
-from collections.abc import Iterator
+import collections
 import dataclasses
 import functools
 import importlib
@@ -24,7 +23,7 @@ class TimeseriesTypeRegistry:
 
     # mapping of app labels => record-type names => record classes
     all_recordtypes: dict[str, dict[str, type]] = dataclasses.field(
-        default_factory=lambda: defaultdict(dict),
+        default_factory=lambda: collections.defaultdict(dict),
     )
 
     # mapping of imp names => (imp module path, imp config)
@@ -54,11 +53,11 @@ class TimeseriesTypeRegistry:
         app_recordtypes[recordtype_name] = record_cls
 
     def register_imp(
-        self, imp_name: str, imp_module_path: str, imp_config: dict[str, str]
+        self, imp_name: str, imp_module_path: str, imp_kwargs: dict[str, str]
     ) -> None:
         if imp_name in self.configured_imps:
             raise RuntimeError(f"duplicate imps named {imp_name!r}")
-        self.configured_imps[imp_name] = (imp_module_path, imp_config)
+        self.configured_imps[imp_name] = (imp_module_path, imp_kwargs)
 
     ###
     # `get` methods: for accessing specific items in the registry
@@ -100,11 +99,11 @@ class TimeseriesTypeRegistry:
 
     def get_imp(self, imp_name: str, namespace_prefix: str = "") -> ProtoTimeseriesImp:
         try:
-            _imp_module_path, _imp_config = self.configured_imps[imp_name]
+            _imp_module_path, _imp_kwargs = self.configured_imps[imp_name]
         except KeyError as _e:
             raise LookupError(f"unknown imp {imp_name!r}") from _e
         _mod = _import_imp_module(_imp_module_path)
-        return _mod.djelme_imp_from_config(imp_name, _imp_config, namespace_prefix)
+        return _mod.djelme_imp(imp_name, _imp_kwargs, namespace_prefix)
 
     ###
     # `each` methods: for iterating over each registered
@@ -113,7 +112,7 @@ class TimeseriesTypeRegistry:
         self,
         app_label: str = "",
         imp_name: str | None = None,
-    ) -> Iterator[type]:
+    ) -> collections.abc.Iterator[type]:
         """Iterate registered metric classes, optionally filtered on an app_label and/or imp_name."""
         apps.check_apps_ready()
         _imp_module = None if imp_name is None else self.get_imp_module(imp_name)
@@ -125,9 +124,16 @@ class TimeseriesTypeRegistry:
                 ):
                     yield _recordtype
 
-    def each_imp(self, namespace_prefix: str = "") -> Iterator[ProtoTimeseriesImp]:
+    def each_imp(self) -> collections.abc.Iterator[ProtoTimeseriesImp]:
         for _imp_name in self.configured_imps.keys():
             yield self.get_imp(_imp_name)
+
+    ###
+    # callback methods
+    def on_app_ready(self) -> None:
+        for _imp_module_path, _imp_names in self._imps_by_module().items():
+            _imp_module = _import_imp_module(_imp_module_path)
+            _imp_module.djelme_when_ready(map(self.get_imp, _imp_names))
 
     ###
     # private methods
@@ -141,7 +147,13 @@ class TimeseriesTypeRegistry:
 
     def _is_type_downstream_of_module(self, given_type: type, module_name: str) -> bool:
         _upstream_modules = (_cls.__module__ for _cls in given_type.__mro__)
-        return (module_name in _upstream_modules)
+        return module_name in _upstream_modules
+
+    def _imps_by_module(self) -> dict[str, list[str]]:
+        _by_module = collections.defaultdict(list)
+        for _imp_name, (_imp_module_path, _) in self.configured_imps.items():
+            _by_module[_imp_module_path].append(_imp_name)
+        return _by_module
 
 
 @functools.lru_cache
