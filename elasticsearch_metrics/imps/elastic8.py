@@ -24,7 +24,12 @@ import logging
 from django.apps import apps
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
-from elasticsearch8.dsl import Document, connections, IndexTemplate, mapped_field
+from elasticsearch8.dsl import (
+    Document,
+    connections,
+    ComposableIndexTemplate,
+    mapped_field,
+)
 from elasticsearch8.dsl._sync.document import IndexMeta
 
 from elasticsearch_metrics import signals
@@ -64,15 +69,14 @@ class _DjelmeRecordMeta(IndexMeta):
 
     def __new__(mcls, name, bases, attrs):  # noqa: B902
         # override IndexMeta.__new__, which removes `class Meta`
-        _doc_type_meta = attrs.get("Meta", None)
+        _doc_type_meta = attrs.get("Meta") or type("Meta", (), {})
         _cls = super().__new__(mcls, name, bases, attrs)
-        if _doc_type_meta is not None:
-            if hasattr(_cls, "Meta"):
-                for _attrname, _attrval in _doc_type_meta.__dict__.items():
-                    if not hasattr(_cls.Meta, _attrname):
-                        setattr(_cls.Meta, _attrname, _attrval)
-            else:
-                _cls.Meta = _doc_type_meta
+        if "Meta" in _cls.__dict__:
+            for _attrname, _attrval in _doc_type_meta.__dict__.items():
+                if not hasattr(_cls.Meta, _attrname):
+                    setattr(_cls.Meta, _attrname, _attrval)
+        else:
+            _cls.Meta = _doc_type_meta
         # register non-abstract subtypes
         if not _cls.is_abstract:
             timeseries_type_registry.register_recordtype(_cls.app_label, _cls)
@@ -149,18 +153,19 @@ class TimeseriesRecord(DjelmeRecord):
 
     @classmethod
     def format_timeseries_index_name(cls, timestamp: datetime.date) -> str:
+        _timeparts = timeseries_naming.timeparts_from_date(
+            timestamp, cls._timepattern_depth
+        )
         return timeseries_naming.format_index_name(
             prefix=cls.timeseries_name_prefix,
-            recordtype=cls.__name__,
-            timeparts=timeseries_naming.timeparts_from_date(
-                timestamp, cls._timepattern_depth
-            ),
+            recordtype=cls.timeseries_recordtype_name,
+            timeparts=_timeparts,
         )
 
     @classmethod
     @property
-    def timeseries_template(cls) -> IndexTemplate:
-        return cls._index.as_template(
+    def timeseries_template(cls) -> ComposableIndexTemplate:
+        return cls._index.as_composable_template(
             template_name=cls.timeseries_template_name,
             pattern=cls.format_timeseries_index_pattern(),
         )
@@ -169,8 +174,13 @@ class TimeseriesRecord(DjelmeRecord):
     @property
     def timeseries_template_name(cls) -> str:
         return timeseries_naming.format_template_name(
-            cls.timeseries_name_prefix, cls.__name__.lower()
+            cls.timeseries_name_prefix, cls.timeseries_recordtype_name
         )
+
+    @classmethod
+    @property
+    def timeseries_recordtype_name(cls) -> str:
+        return cls._get_meta_attr("timeseries_recordtype_name", cls.__name__)
 
     @classmethod
     @property
@@ -181,7 +191,7 @@ class TimeseriesRecord(DjelmeRecord):
     def format_timeseries_index_pattern(cls, timeparts: tuple[int, ...] = ()) -> str:
         return timeseries_naming.format_index_pattern(
             prefix=cls.timeseries_name_prefix,
-            recordtype=cls.__name__,
+            recordtype=cls.timeseries_recordtype_name,
             timeparts=timeparts,
         )
 
@@ -221,17 +231,17 @@ class TimeseriesRecord(DjelmeRecord):
     # TODO: revisit the following
 
     @classmethod
-    def sync_index_template(cls, using=None):
+    def sync_index_template(cls, using=None) -> ComposableIndexTemplate:
         """Sync the index template for this metric in Elasticsearch."""
-        index_template = cls.get_timeseries_index_template()
+        _template = cls.timeseries_template
         signals.pre_index_template_create.send(
-            cls, index_template=index_template, using=using
+            cls, index_template=_template, using=using
         )
-        index_template.save(using=using)
+        _template.save(using=using)
         signals.post_index_template_create.send(
-            cls, index_template=index_template, using=using
+            cls, index_template=_template, using=using
         )
-        return index_template
+        return _template
 
     @classmethod
     def check_index_template(cls, using=None):
@@ -245,17 +255,17 @@ class TimeseriesRecord(DjelmeRecord):
         """
         client = connections.get_connection(using or "default")
         try:
-            template = client.indices.get_template(cls._template_name)
+            template = client.indices.get_index_template(cls.timeseries_template_name)
         except NotFoundError as client_error:
-            template_name = cls._template_name
-            metric_name = cls.__name__
+            template_name = cls.timeseries_template_name
+            cls_name = cls.__name__
             raise exceptions.IndexTemplateNotFoundError(
-                "{template_name} does not exist for {metric_name}".format(**locals()),
+                "{template_name} does not exist for {cls_name}".format(**locals()),
                 client_error=client_error,
             ) from client_error
         else:
             current_data = list(template.values())[0]
-            template_data = cls.get_timeseries_index_template().to_dict()
+            template_data = cls.timeseries_template.to_dict()
 
             mappings_in_sync = current_data["mappings"] == template_data["mappings"]
             if "settings" in current_data and "index" in current_data["settings"]:
@@ -276,8 +286,8 @@ class TimeseriesRecord(DjelmeRecord):
             )
 
             if not all([mappings_in_sync, settings_in_sync, patterns_in_sync]):
-                template_name = cls._template_name
-                metric_name = cls.__name__
+                template_name = cls.timeseries_template_name
+                cls_name = cls.__name__
                 word_map = {
                     "mappings": mappings_in_sync,
                     "patterns": patterns_in_sync,
@@ -287,7 +297,7 @@ class TimeseriesRecord(DjelmeRecord):
                     [key for key, value in word_map.items() if not value]
                 )
                 raise exceptions.IndexTemplateOutOfSyncError(
-                    "{template_name} is out of sync with {metric_name} ({out_of_sync})".format(
+                    "{template_name} is out of sync with {cls_name} ({out_of_sync})".format(
                         **locals()
                     ),
                     mappings_in_sync=mappings_in_sync,
@@ -326,17 +336,21 @@ class DjelmeElastic8Imp:
         return connections.get_connection(self.imp_name)
 
     def setup_timeseries_indexes(self) -> None:
-        for _metric_type in self._each_recordtype():
+        for _recordtype in self._each_recordtype():
             # TODO: logger.info
-            _metric_type.sync_index_template(using=self.elastic8_client)
+            _recordtype.sync_index_template(using=self.elastic8_client)
 
     def teardown_timeseries_indexes(self) -> None:
-        for _metric_type in self._each_recordtype():
-            _indexname_wildcard = _metric_type.format_timeseries_index_pattern()
-            _templatename = _metric_type._template_name
-            self.elastic8_client.indices.delete(index=_indexname_wildcard)
+        for _recordtype in self._each_recordtype():
+            _indexname_wildcard = _recordtype.format_timeseries_index_pattern()
+            _indices = self.elastic8_client.indices.get(
+                index=_indexname_wildcard, features=","
+            )
+            for _index_name in _indices.keys():
+                self.elastic8_client.indices.delete(index=_index_name)
+            _templatename = _recordtype.timeseries_template_name
             try:
-                self.elastic8_client.indices.delete_template(_templatename)
+                self.elastic8_client.indices.delete_index_template(name=_templatename)
             except NotFoundError:
                 pass
 

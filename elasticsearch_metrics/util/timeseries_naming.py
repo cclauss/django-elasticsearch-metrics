@@ -41,7 +41,9 @@ def format_index_name(
     ]
     if timeparts:
         _parts.append(_format_timename(*timeparts))
-    _parts.append('')  # always end with the delimiter, to match wildcard pattern `foo_bar_123_*`
+    _parts.append(
+        ""
+    )  # always end with the delimiter, to match wildcard pattern `foo_bar_123_*`
     return _DELIMITER.join(_parts)
 
 
@@ -54,7 +56,7 @@ def format_index_pattern(
     >>> format_index_pattern('aoeu', 'mynote', (9999,22))
     'aoeu_mynote_9999_22_*'
     """
-    return f'{format_index_name(prefix, recordtype, timeparts)}*'
+    return f"{format_index_name(prefix, recordtype, timeparts)}*"
 
 
 def format_template_name(
@@ -63,7 +65,7 @@ def format_template_name(
 ) -> str:
     """
     >>> format_template_name('blah', 'fleh')
-    'blah_fleh_template'
+    'blah_fleh__template'
     """
     return _DELIMITER.join(
         (format_namepart(prefix), format_namepart(recordtype), _TEMPLATE_NAME_SUFFIX)
@@ -197,8 +199,11 @@ def timeparts_from_date(given_date: datetime.date, part_count: int) -> tuple[str
     """
     >>> timeparts_from_date(datetime.date(3456, 7, 8), 2)
     ('3456', '07')
+    >>> timeparts_from_date(datetime.date(3456, 7, 8), 4)
+    ('3456', '07', '08', '00')
     """
-    return tuple(itertools.islice(_each_timepart_from_date(given_date), part_count))
+    _parts = itertools.chain(_each_timepart_from_date(given_date), itertools.repeat(0))
+    return tuple(itertools.islice(_parts, part_count))
 
 
 def _each_timepart_from_date(given_date: datetime.date) -> Iterator[int]:

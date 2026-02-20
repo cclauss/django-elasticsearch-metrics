@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from elasticsearch8.dsl import (
     Keyword,
-    IndexTemplate,
+    ComposableIndexTemplate,
     analyzer,
     tokenizer,
     connections,
@@ -30,68 +30,57 @@ from elasticsearch_metrics.tests.dummy8app.metrics import (
     ThingHappeningsReport,
 )
 
-route_prefix_analyzer = analyzer(
-    "route_prefix_analyzer",
-    tokenizer=tokenizer("route_prefix_tokenizer", "path_hierarchy", delimiter="."),
-)
 
-
-class TestGetIndexName(SimpleDjelmeTestCase):
-    def test_get_index_name(self):
+class TestFormatIndexName(SimpleDjelmeTestCase):
+    def test_format_timeseries_index_name(self):
         date = dt.date(2020, 2, 14)
-        assert (
-            ThingHappened.format_timeseries_index_name(date=date)
-            == "osf_metrics_preprintviews_2020.02.14"
+        self.assertEqual(
+            ThingHappened.format_timeseries_index_name(date),
+            "dummy8app_happen_2020_02_",
         )
 
-    def test_get_index_name_respects_date_format_setting(self):
-        with self.settings(ELASTICSEARCH_METRICS_DATE_FORMAT="%Y-%m-%d"):
+    def test_format_index_name_respects_date_format_setting(self):
+        with unittest.mock.patch.object(
+            ThingHappened.Meta, "timepattern_depth", 4, create=True
+        ):
             date = dt.date(2020, 2, 14)
-            assert (
-                ThingHappened.format_timeseries_index_name(date=date)
-                == "osf_metrics_preprintviews_2020-02-14"
+            self.assertEqual(
+                ThingHappened.format_timeseries_index_name(date),
+                "dummy8app_happen_2020_02_14_00_",
             )
-
-    def test_get_index_name_gets_index_for_today_by_default(self):
-        today = timezone.now().date()
-        today_formatted = today.strftime("%Y.%m.%d")
-        assert ThingHappened.format_timeseries_index_name() == "osf_metrics_preprintviews_{}".format(
-            today_formatted
-        )
 
 
 class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_get_index_template_returns_template_with_correct_name_and_pattern(self):
-        template = ThingHappened.get_timeseries_index_template()
-        assert isinstance(template, IndexTemplate)
-        assert template._template_name == "iv"
-        assert "osf_metrics_preprintviews_*" in template.to_dict()["index_patterns"]
+        template = ThingHappened.timeseries_template
+        assert isinstance(template, ComposableIndexTemplate)
+        assert template._template_name == "dummy8app_happen__template"
+        assert "dummy8app_happen_*" in template.to_dict()["index_patterns"]
 
     def test_get_index_template_respects_index_settings(self):
-        template = ThingHappened.get_timeseries_index_template()
+        template = ThingHappened.timeseries_template
         assert template._index.to_dict()["settings"] == {
             "refresh_interval": "-1",
             "analysis": {
                 "analyzer": {
-                    "route_prefix_analyzer": {
-                        "tokenizer": "route_prefix_tokenizer",
+                    "dot_path_analyzer": {
+                        "tokenizer": "dot_path_tokenizer",
                         "type": "custom",
-                    },
+                    }
                 },
                 "tokenizer": {
-                    "route_prefix_tokenizer": {
+                    "dot_path_tokenizer": {
                         "delimiter": ".",
                         "type": "path_hierarchy",
-                    },
+                    }
                 },
             },
         }
 
     def test_get_index_template_creates_template_with_mapping(self):
-        template = ThingHappened.get_timeseries_index_template()
-        mappings = template.to_dict()["mappings"]
-        assert mappings["doc"]["_source"]["enabled"] is False
-        properties = mappings["doc"]["properties"]
+        template = ThingHappened.timeseries_template
+        mappings = template.to_dict()["template"]["mappings"]
+        properties = mappings["properties"]
         assert "timestamp" in properties
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}
@@ -99,35 +88,35 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     # regression test
     def test_mappings_are_not_shared(self):
-        template1 = Dummy8Event.get_timeseries_index_template()
-        template2 = Dummy8EventWithExplicitNamePrefix.get_timeseries_index_template()
-        assert "my_int" in template1.to_dict()["mappings"]["doc"]["properties"]
-        assert "my_keyword" not in template1.to_dict()["mappings"]["doc"]["properties"]
-        assert "my_int" not in template2.to_dict()["mappings"]["doc"]["properties"]
-        assert "my_keyword" in template2.to_dict()["mappings"]["doc"]["properties"]
+        template1 = Dummy8Event.timeseries_template.to_dict()
+        template2 = Dummy8EventWithExplicitNamePrefix.timeseries_template.to_dict()
+        assert "intensity" in template1["template"]["mappings"]["properties"]
+        assert "intenzity" not in template1["template"]["mappings"]["properties"]
+        assert "intensity" not in template2["template"]["mappings"]["properties"]
+        assert "intenzity" in template2["template"]["mappings"]["properties"]
 
     def test_get_index_template_default_template_name(self):
-        template = Dummy8Event.get_timeseries_index_template()
-        assert isinstance(template, IndexTemplate)
-        assert template._template_name == "dummy8app_dummy8record"
-        assert "dummy8app_dummy8record_*" in template.to_dict()["index_patterns"]
+        template = Dummy8Event.timeseries_template
+        assert isinstance(template, ComposableIndexTemplate)
+        assert template._template_name == "dummy8app_dummy8event__template"
+        assert "dummy8app_dummy8event_*" in template.to_dict()["index_patterns"]
 
     def test_get_index_template_uses_app_label_in_class_meta(self):
         class MyRecord(djelme.TimeseriesRecord):
             class Meta:
                 app_label = "myapp"
 
-        template = MyRecord.get_timeseries_index_template()
-        assert template._template_name == "myapp_myrecord"
+        template = MyRecord.timeseries_template
+        assert template._template_name == "myapp_myrecord__template"
 
     def test_template_name_defined_with_no_template_falls_back_to_default_template(
         self,
     ):
-        template = Dummy8EventWithExplicitNamePrefix.get_timeseries_index_template()
-        # template name specified in class Meta
-        assert template._template_name == "dummy8record"
-        # template pattern generated using template name
-        assert "dummy8record_*" in template.to_dict()["index_patterns"]
+        template = Dummy8EventWithExplicitNamePrefix.timeseries_template
+        # prefix and recordtype specified in class Meta
+        assert template._template_name == "dummy8evenz_eventlog__template"
+        # template pattern generated using same options
+        assert "dummy8evenz_eventlog_*" in template.to_dict()["index_patterns"]
 
     def test_inheritance(self):
         class MyBaseRecord(djelme.TimeseriesRecord):
@@ -143,21 +132,20 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
             class Meta:
                 app_label = "dummy8app"
 
-        template = ConcreteRecord.get_timeseries_index_template()
-        assert template._template_name == "dummy8app_concreterecord"
+        template = ConcreteRecord.timeseries_template
+        assert template._template_name == "dummy8app_concreterecord__template"
         assert template._index.to_dict()["settings"] == {"number_of_shards": 2}
 
     def test_source_may_be_enabled(self):
         class MyRecord(djelme.TimeseriesRecord):
             class Meta:
                 app_label = "dummy8app"
-                template_name = "myrecord"
+                timeseries_recordtype_name = "myrecord"
                 source = MetaField(enabled=True)
 
-        template = MyRecord.get_timeseries_index_template()
-
+        template = MyRecord.timeseries_template
         template_dict = template.to_dict()
-        doc = template_dict["mappings"]["doc"]
+        doc = template_dict["template"]["mappings"]
         assert doc["_source"]["enabled"] is True
 
 
@@ -180,8 +168,8 @@ class TestRecord(MockSaveTestCase):
 
 
 class TestSignals(MockSaveTestCase):
-    @unittest.mock.patch.object(ThingHappened, "get_timeseries_index_template")
-    def test_create_record_sends_signals(self, mock_get_index_template):
+    @unittest.mock.patch.object(ThingHappened, "timeseries_template")
+    def test_create_record_sends_signals(self, mock_timeseries_template):
         mock_pre_index_template_listener = unittest.mock.Mock()
         mock_post_index_template_listener = unittest.mock.Mock()
         signals.pre_index_template_create.connect(mock_pre_index_template_listener)
@@ -226,22 +214,25 @@ class TestSignals(MockSaveTestCase):
 class TestCreateDocument(RealElasticTestCase):
     @property
     def es8_client(self):
-        return connections.get_connection("default")
+        return connections.get_connection("elastic8events")
 
     def test_create_document(self):
-        thing_id = "12345"
-        happen_code = "zyxwv"
-        doc = ThingHappened(thing_id=thing_id, happen_code=happen_code)
-        doc.save()
-        document = ThingHappened.get(
-            id=doc.meta.id, index=ThingHappened.format_timeseries_index_name()
+        _thing_id = "12345"
+        _happen_code = "zyxwv"
+        _doc = ThingHappened(thing_id=_thing_id, happen_code=_happen_code)
+        _doc.save()
+        assert _doc.timestamp is not None
+        _fetched_doc = ThingHappened.get(
+            id=_doc.meta.id, index=_doc.timeseries_index_name
         )
-        assert document is not None  # TODO: more thoroughly
+        assert _fetched_doc.timestamp == _doc.timestamp
+        assert _fetched_doc.thing_id == _doc.thing_id == _thing_id
+        assert _fetched_doc.happen_code == _doc.happen_code == _happen_code
 
         # index mappings should match the index template
-        name = ThingHappened.get_index_name()
+        name = _doc.timeseries_index_name
         mapping = self.es8_client.indices.get_mapping(index=name)
-        properties = mapping[name]["mappings"]["doc"]["properties"]
+        properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}
         assert properties["happen_code"] == {"type": "keyword"}
@@ -254,9 +245,9 @@ class TestInit(RealElasticTestCase, auto_setup_imps=False):
 
     def test_init(self):
         ThingHappened.init()
-        name = ThingHappened.get_index_name()
+        name = ThingHappened.timeseries_index_name
         mapping = self.es8_client.indices.get_mapping(index=name)
-        properties = mapping[name]["mappings"]["doc"]["properties"]
+        properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}
         assert properties["happen_code"] == {"type": "keyword"}
