@@ -42,24 +42,31 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     __auto_setup_imps: bool
 
-    def __init_subclass__(cls, /, auto_setup_imps: bool = True, **kwargs):
+    def __init_subclass__(
+        cls,
+        /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, auto_setup_imps=False)
+        auto_setup_imps: bool = True,
+        auto_teardown_imps: bool = True,
+        **kwargs,
+    ):
         super().__init_subclass__(**kwargs)
         cls.__auto_setup_imps = auto_setup_imps
+        cls.__auto_teardown_imps = auto_teardown_imps
 
     def setUp(self):
         super().setUp()
         if self.__auto_setup_imps:
-            self.teardown_djelme_imps()  # in case any already exist
             self.setup_djelme_imps()
 
     def tearDown(self):
         super().tearDown()
-        self.teardown_djelme_imps()
+        if self.__auto_teardown_imps:
+            self.teardown_djelme_imps()
 
     def setup_djelme_imps(self):
         # TODO: prefix index names, avoid collisions across test runs
         # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_TIMESERIES_IMPS
-        self.teardown_djelme_imps()  # in case any already exist
+        #self.teardown_djelme_imps()  # in case any already exist
         for _imp in timeseries_type_registry.each_imp():
             _imp.setup_timeseries_indexes()
 
