@@ -1,12 +1,12 @@
 from unittest import mock
 
 from elasticsearch_metrics import exceptions
-from elasticsearch_metrics.management.commands import check_metrics
+from elasticsearch_metrics.management.commands import djelme_check
 from elasticsearch_metrics.registry import registry
 from elasticsearch_metrics.tests._test_util import SimpleDjelmeTestCase
 
 
-class TestCheckMetrics(SimpleDjelmeTestCase):
+class TestCheckRecordtypes(SimpleDjelmeTestCase):
     def setUp(self):
         self.mock6_check_index_template = self.enterContext(
             mock.patch(
@@ -26,7 +26,7 @@ class TestCheckMetrics(SimpleDjelmeTestCase):
             )
         )
         with self.assertRaises(SystemExit):
-            self.run_mgmt_command(check_metrics.Command)
+            self.run_mgmt_command(djelme_check.Command)
 
     def test_exits_with_error_if_out_of_sync_8(self):
         self.mock8_check_index_template.side_effect = (
@@ -35,12 +35,12 @@ class TestCheckMetrics(SimpleDjelmeTestCase):
             )
         )
         with self.assertRaises(SystemExit):
-            self.run_mgmt_command(check_metrics.Command)
+            self.run_mgmt_command(djelme_check.Command)
 
     def test_exits_with_success(self):
         self.mock6_check_index_template.return_value = True
         self.mock8_check_index_template.return_value = True
-        self.run_mgmt_command(check_metrics.Command)
+        self.run_mgmt_command(djelme_check.Command)
         _call_count = (
             self.mock6_check_index_template.call_count
             + self.mock8_check_index_template.call_count

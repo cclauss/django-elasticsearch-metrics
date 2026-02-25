@@ -16,7 +16,7 @@ def _dummy_style_func(msg):
 
 def no_style():
     style = color.no_style()
-    for role in ("METRIC", "ES_TEMPLATE"):
+    for role in ("TYPENAME", "ES_TEMPLATE"):
         setattr(style, role, _dummy_style_func)
     return style
 
@@ -24,7 +24,7 @@ def no_style():
 def color_style():
     if color.supports_color():
         style = color.color_style()
-        style.METRIC = termcolors.make_style(opts=("bold",))
+        style.TYPENAME = termcolors.make_style(opts=("bold",))
         style.ES_TEMPLATE = termcolors.make_style(fg="yellow")
     else:
         style = no_style()

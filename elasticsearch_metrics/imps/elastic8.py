@@ -353,7 +353,7 @@ class DjelmeElastic8Imp:
 
     @property
     def _elastic8dsl_connection_name(self) -> str:
-        return f"{self.imp_name}_conn"
+        return self.imp_name
 
     @property
     def _elastic8dsl_connection_kwargs(self) -> dict:
@@ -390,10 +390,12 @@ djelme_imp = DjelmeElastic8Imp  # for ProtoTimeseriesImpModule
 def djelme_when_ready(  # for ProtoTimeseriesImpModule
     imps: collections.abc.Iterable[ProtoTimeseriesImp],
 ) -> None:
+    assert all(isinstance(_imp, DjelmeElastic8Imp) for _imp in imps)
     connections.configure(
         **{
             _imp._elastic8dsl_connection_name: _imp._elastic8dsl_connection_kwargs
             for _imp in imps
-            if isinstance(_imp, DjelmeElastic8Imp)
         }
     )
+    for _imp in imps:
+

@@ -6,33 +6,39 @@ from django.utils.module_loading import autodiscover_modules
 
 from elasticsearch_metrics.registry import djelme_registry
 
-_IMPS_KEY = "DJELMETRICS_TIMESERIES_IMPS"
+IMPS_SETTING = "DJELMETRICS_TIMESERIES_IMPS"
+AUTOSYNC_SETTING = "DJELMETRICS_AUTOSYNC"
 
 
 class ElasticsearchMetricsConfig(AppConfig):
     name = "elasticsearch_metrics"
 
     def ready(self) -> None:
-        for (
-            _imp_name,
-            _imp_module_path,
-            _imp_kwargs,
-        ) in _each_timeseries_settings_entry():
-            djelme_registry.register_imp(
-                _imp_name, _imp_module_path, _imp_kwargs
-            )
+        # load imps settings
+        _imp_names_by_module = collections.defaultdict(list)
+        for _imp_name, _imp_module_path, _imp_kwargs in _each_imp_setting():
+            _imp_names_by_module[_imp_module_path].append(_imp_name)
+            djelme_registry.register_imp(_imp_name, _imp_module_path, _imp_kwargs)
+        # discover any `foo.metrics` in installed apps
         autodiscover_modules("metrics")
-        djelme_registry.on_app_ready()
-
+        # call `djelme_when_ready` on each imp module
+        for _imp_module_path, _imp_names in _imp_names_by_module.items():
+            _imp_module = djelme_registry.get_imp_module(_imp_module_path)
+            _imp_module.djelme_when_ready(
+                imps=[djelme_registry.get_imp(_name) for _name in _imp_names]
+            )
+        # autosync
+        if getattr(settings, AUTOSYNC_SETTING, False):
+            for _imp in djelme_registry.each_imp():
+                for _recordtype in djelme_registry.each_recordtype(imp_name=_imp.imp_name):
+                    _recordtype.setup_timeseries_indexes()
 
 ###
 # accessing django settings
 
 
-def _each_timeseries_settings_entry() -> (
-    collections.abc.Iterator[tuple[str, str, dict[str, str]]]
-):
-    for _imp_name, _imp_settings in getattr(settings, _IMPS_KEY, {}).items():
+def _each_imp_setting() -> collections.abc.Iterator[tuple[str, str, dict[str, str]]]:
+    for _imp_name, _imp_settings in getattr(settings, IMPS_SETTING, {}).items():
         for _imp_module_path, _imp_kwargs in _imp_settings.items():
             # TODO: better errors
             assert isinstance(_imp_module_path, str)

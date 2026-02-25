@@ -36,17 +36,18 @@ class TimeseriesTypeRegistry:
     # `register` methods: for adding items to the registry
 
     def register_recordtype(
-        self, app_label: str, record_cls: type[ProtoTimeseriesRecord]
+        self, record_cls: type[ProtoTimeseriesRecord], *, app_label: str = ""
     ) -> None:
         """Add a record type to the registry."""
-        app_recordtypes = self.all_recordtypes[app_label]
+        _app_label = app_label or self._find_app_label(record_cls)
+        app_recordtypes = self.all_recordtypes[_app_label]
         recordtype_name = record_cls.__name__.lower()
         if recordtype_name in app_recordtypes:
             # Raise an error for conflicting metrics (same behavior as apps.register_model)
             raise RuntimeError(
                 "Conflicting '{}' metrics in application '{}': {} and {}.".format(
                     recordtype_name,
-                    app_label,
+                    _app_label,
                     app_recordtypes[recordtype_name],
                     record_cls,
                 )
@@ -95,9 +96,15 @@ class TimeseriesTypeRegistry:
         _imp_module, _imp_kwargs = self._lookup_imp_module(imp_name)
         return _imp_module.djelme_imp(imp_name, _imp_kwargs, namespace_prefix)
 
-    def get_imp_module(self, imp_name: str) -> ProtoTimeseriesImpModule:
-        _imp_module, _ = self._lookup_imp_module(imp_name)
-        return _imp_module
+    def get_imp_module(
+        self, imp_module_path: str = "", *, imp_name: str = ""
+    ) -> ProtoTimeseriesImpModule:
+        _to_import = imp_module_path
+        if imp_name:
+            assert not imp_module_path  # one or the other
+            _registered_module_path, _ = self._lookup_imp(imp_name)
+            _to_import = _registered_module_path
+        return _import_imp_module(_to_import)
 
     ###
     # `each` methods: for iterating over each registered
@@ -105,11 +112,11 @@ class TimeseriesTypeRegistry:
     def each_recordtype(
         self,
         app_label: str = "",
-        imp_name: str | None = None,
+        imp_name: str = "",
     ) -> collections.abc.Iterator[type]:
         """Iterate registered metric classes, optionally filtered on an app_label and/or imp_name."""
-        apps.check_apps_ready()
-        _imp_module = None if (imp_name is None) else self.get_imp_module(imp_name)
+        apps.check_apps_ready()  # ensure django setup done
+        _imp_module = self.get_imp_module(imp_name=imp_name) if imp_name else None
         app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for app_label in app_labels:
             for _recordtype in self._get_recordtypes_for_app(app_label).values():
@@ -123,16 +130,10 @@ class TimeseriesTypeRegistry:
         *,
         imp_module_path: str = "",
     ) -> collections.abc.Iterator[ProtoTimeseriesImp]:
+        apps.check_apps_ready()  # ensure django setup done
         for _imp_name, _imp_config in self.configured_imps.items():
             if (not imp_module_path) or (imp_module_path in _imp_config):
                 yield self.get_imp(_imp_name)
-
-    ###
-    # `on` methods: for when things happen
-
-    def on_app_ready(self) -> None:
-        for _imp_module, _imps in self._imps_by_module():
-            _imp_module.djelme_when_ready(_imps)
 
     ###
     # private methods
@@ -163,19 +164,25 @@ class TimeseriesTypeRegistry:
         _upstream_modules = (_cls.__module__ for _cls in given_type.__mro__)
         return module_name in _upstream_modules
 
-    def _imps_by_module(
-        self,
-    ) -> collections.abc.Iterator[
-        tuple[ProtoTimeseriesImpModule, list[ProtoTimeseriesImp]]
-    ]:
-        _by_module = collections.defaultdict(list)
-        for _imp_name in self.configured_imps.keys():
-            _imp_module_path, _imp_kwargs = self._lookup_imp(_imp_name)
-            _by_module[_imp_module_path].append(_imp_name)
-        for _imp_module_path, _imp_names in _by_module.items():
-            _imp_module = _import_imp_module(_imp_module_path)
-            _imps = [self.get_imp(_name) for _name in _imp_names]
-            yield (_imp_module, _imps)
+    def _find_app_label(self, given_type: type) -> str:
+        # Look for an application configuration to attach the model to.
+        _containing_app_configs = sorted(
+            (
+                _app_config
+                for _app_config in apps.get_app_configs()
+                if given_type.__module__.startswith(_app_config.module.__name__)
+            ),
+            key=lambda _config: len(_config.module.__name__),
+            reverse=True,  # longest module name first
+        )
+        if not _containing_app_configs:
+            raise RuntimeError(
+                f"type {given_type.__module__}.{given_type.__qualname__} "
+                "doesn't declare an explicit app_label and isn't in an "
+                "application in INSTALLED_APPS."
+            )
+        _app_config = _containing_app_configs[0]
+        return _app_config.label
 
 
 @functools.lru_cache

@@ -186,11 +186,10 @@ def test_something():
 
 ## Management commands
 
-* `sync_metrics`: Ensure that index templates have been created for
-    your metrics.
-* `show_metrics`: Pretty-print a listing of all registered metrics.
-* `check_metrics`: Check if index templates are in sync. Exits
-    with an error code if any metrics are out of sync.
+* `djelme_types`: Pretty-print a listing of all registered record types.
+* `djelme_setup`: Ensure that index templates have been created for your record types.
+* `djelme_check`: Check if index templates are in sync. Exits
+    with an error code if any templates are out of sync.
 
 <!-- * `clean_metrics` : Clean old data using [curator](https://curator.readthedocs.io/en/latest/). -->
 <!--  -->

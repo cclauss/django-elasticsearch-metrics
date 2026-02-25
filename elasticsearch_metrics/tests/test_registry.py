@@ -3,6 +3,7 @@ from django.test import SimpleTestCase
 from elasticsearch_metrics.imps import elastic6
 from elasticsearch_metrics.registry import registry
 from elasticsearch_metrics.tests.dummy6app.metrics import Dummy6Metric
+from elasticsearch_metrics.tests.dummy8app.metrics import Dummy8Event
 
 
 class MetricWithAppLabel(elastic6.Metric):
@@ -31,6 +32,8 @@ class TestTimeseriesTypeRegistry(SimpleTestCase):
     def test_get_recordtype(self):
         assert registry.get_recordtype("dummy6app", "Dummy6Metric") is Dummy6Metric
         assert registry.get_recordtype("dummy6app.Dummy6Metric") is Dummy6Metric
+        assert registry.get_recordtype("dummy8app", "Dummy8Event") is Dummy8Event
+        assert registry.get_recordtype("dummy8app.Dummy8Event") is Dummy8Event
 
         with self.assertRaises(LookupError) as excinfo:
             registry.get_recordtype("dummy6app", "DoesNotExist")
