@@ -24,6 +24,7 @@ import logging
 from django.apps import apps
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
+from elasticsearch8 import Elasticsearch as Elastic8Client
 from elasticsearch8.dsl import (
     Document,
     connections,
@@ -34,7 +35,7 @@ from elasticsearch8.dsl._sync.document import IndexMeta
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
-from elasticsearch_metrics.registry import timeseries_type_registry
+from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.protocols import ProtoTimeseriesImp
 from elasticsearch_metrics.util import timeseries_naming
 
@@ -49,23 +50,7 @@ class _DjelmeRecordMeta(IndexMeta):
 
     overrides behavior in elasticsearch-py's `IndexMeta` to allow
     additional config in a type's `class Meta`
-
-    >>> class MyAbstractRecord(DjelmeRecord):
-    ...     foo: int
-    ...     class Meta:
-    ...         abstract = True
-    ...         blargl = 5
-    >>> MyAbstractRecord.Meta.blargl
-    5
-    >>> MyAbstractRecord.Meta.abstract
-    True
-    >>> MyAbstractRecord.is_abstract
-    True
-    >>> MyAbstractRecord.app_label
-    'elasticsearch_metrics'
     """
-
-    _TYPECONFIG_CLS = "Meta"
 
     def __new__(mcls, name, bases, attrs):  # noqa: B902
         # override IndexMeta.__new__, which removes `class Meta`
@@ -79,7 +64,7 @@ class _DjelmeRecordMeta(IndexMeta):
             _cls.Meta = _doc_type_meta
         # register non-abstract subtypes
         if not _cls.is_abstract:
-            timeseries_type_registry.register_recordtype(_cls.app_label, _cls)
+            djelme_registry.register_recordtype(_cls.app_label, _cls)
         return _cls
 
     def _get_meta_attr(self, attr_name: str, default=None) -> bool:
@@ -120,7 +105,22 @@ class _DjelmeRecordMeta(IndexMeta):
 
 
 class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
-    """a subclass of elasticsearch8.dsl.Document, with conveniences"""
+    """a subclass of elasticsearch8.dsl.Document, with conveniences
+
+    >>> class MyAbstractRecord(DjelmeRecord):
+    ...     foo: int
+    ...     class Meta:
+    ...         abstract = True
+    ...         blargl = 5
+    >>> MyAbstractRecord.Meta.blargl
+    5
+    >>> MyAbstractRecord.Meta.abstract
+    True
+    >>> MyAbstractRecord.is_abstract
+    True
+    >>> MyAbstractRecord.app_label
+    'elasticsearch_metrics'
+    """
 
     class Meta:
         abstract = True
@@ -131,6 +131,25 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
         _instance = cls(**kwargs)
         _instance.save(using=using)
         return _instance
+
+    @classmethod
+    def _get_using(cls, using: str | Elastic8Client = None) -> str | Elastic8Client:
+        """get the elasticsearch8 connection name to use
+
+        overrides elasticsearch8.Document._get_using to allow
+        getting connection name from a djelme imp and default
+        to the first configured imp that uses this imp module
+        """
+        _imp = None
+        if using is None:
+            _each_imp = djelme_registry.each_imp(imp_module_path=__name__)
+            _imp = next(_each_imp, None)
+        elif isinstance(using, str) and (using in djelme_registry.configured_imps):
+            _imp = djelme_registry.get_imp(using)
+        if _imp is not None:
+            assert isinstance(_imp, DjelmeElastic8Imp)
+            return _imp._elastic8dsl_connection_name
+        return super()._get_using(using)
 
 
 class TimeseriesRecord(DjelmeRecord):
@@ -148,13 +167,18 @@ class TimeseriesRecord(DjelmeRecord):
         assert not cls.is_abstract
         # to init timeseries indexes, create only the template
         cls.sync_index_template(using=using)
-        if index:  # unless specific index requested
-            return super().init(index=index, using=using)
+        return super().init(
+            index=(index or cls.format_timeseries_index_name()),
+            using=cls._get_using(using),
+        )
 
     @classmethod
-    def format_timeseries_index_name(cls, timestamp: datetime.date) -> str:
+    def format_timeseries_index_name(
+        cls, timestamp: datetime.date | None = None
+    ) -> str:
         _timeparts = timeseries_naming.timeparts_from_date(
-            timestamp, cls._timepattern_depth
+            timestamp or timezone.now(),
+            cls._timepattern_depth,
         )
         return timeseries_naming.format_index_name(
             prefix=cls.timeseries_name_prefix,
@@ -227,9 +251,6 @@ class TimeseriesRecord(DjelmeRecord):
         signals.post_save.send(self.__class__, instance=self, using=using, index=index)
         return ret
 
-    ######
-    # TODO: revisit the following
-
     @classmethod
     def sync_index_template(cls, using=None) -> ComposableIndexTemplate:
         """Sync the index template for this metric in Elasticsearch."""
@@ -237,7 +258,7 @@ class TimeseriesRecord(DjelmeRecord):
         signals.pre_index_template_create.send(
             cls, index_template=_template, using=using
         )
-        _template.save(using=using)
+        _template.save(using=cls._get_using(using))
         signals.post_index_template_create.send(
             cls, index_template=_template, using=using
         )
@@ -253,41 +274,38 @@ class TimeseriesRecord(DjelmeRecord):
         :return: True if index template exsits and mappings, settings, and index patterns
             are in sync.
         """
-        client = connections.get_connection(using or "default")
+        client = cls._get_connection(using)
         try:
-            template = client.indices.get_index_template(cls.timeseries_template_name)
+            _template_response = client.indices.get_index_template(
+                name=cls.timeseries_template_name
+            )
         except NotFoundError as client_error:
-            template_name = cls.timeseries_template_name
-            cls_name = cls.__name__
             raise exceptions.IndexTemplateNotFoundError(
-                "{template_name} does not exist for {cls_name}".format(**locals()),
+                f"{cls.timeseries_template_name} does not exist for {cls.__name__}",
                 client_error=client_error,
             ) from client_error
         else:
-            current_data = list(template.values())[0]
-            template_data = cls.timeseries_template.to_dict()
-
-            mappings_in_sync = current_data["mappings"] == template_data["mappings"]
-            if "settings" in current_data and "index" in current_data["settings"]:
-                current_settings = current_data["settings"]["index"]
-                template_settings = template_data.get("settings", {})
-                # ES automatically casts number_of_shards and number_of_replicas to a string
-                # so we need to cast before we compare
-                # TODO: Are there other settings that need to be handled?
-                number_settings = {"number_of_shards", "number_of_replicas"}
-                for setting in number_settings:
-                    if setting in template_settings:
-                        template_settings[setting] = str(template_settings[setting])
-                settings_in_sync = current_settings == template_settings
-            else:
-                settings_in_sync = True
-            patterns_in_sync = (
-                current_data["index_patterns"] == template_data["index_patterns"]
-            )
+            (_current_index_dict,) = _template_response["index_templates"]
+            assert _current_index_dict["name"] == cls.timeseries_template_name
+            _current_template = _current_index_dict["index_template"]["template"]
+            _current_patterns = _current_index_dict["index_template"]["index_patterns"]
+            _current_mappings = _current_template["mappings"]
+            _current_settings = _current_template.get("settings", {}).get("index")
+            _expected_template_dict = cls.timeseries_template.to_dict()
+            _expected_template = _expected_template_dict["template"]
+            _expected_patterns = _expected_template_dict["index_patterns"]
+            _expected_mappings = _expected_template["mappings"]
+            _expected_settings = _expected_template.get("settings")
+            if _expected_settings:
+                # ES automatically casts integer settings to string
+                for _name, _val in list(_expected_settings.items()):
+                    if isinstance(_val, int):
+                        _expected_settings[_name] = str(_val)
+            mappings_in_sync = _current_mappings == _expected_mappings
+            settings_in_sync = _current_settings == _expected_settings
+            patterns_in_sync = _current_patterns == _expected_patterns
 
             if not all([mappings_in_sync, settings_in_sync, patterns_in_sync]):
-                template_name = cls.timeseries_template_name
-                cls_name = cls.__name__
                 word_map = {
                     "mappings": mappings_in_sync,
                     "patterns": patterns_in_sync,
@@ -297,9 +315,7 @@ class TimeseriesRecord(DjelmeRecord):
                     [key for key, value in word_map.items() if not value]
                 )
                 raise exceptions.IndexTemplateOutOfSyncError(
-                    "{template_name} is out of sync with {cls_name} ({out_of_sync})".format(
-                        **locals()
-                    ),
+                    f"{cls.timeseries_template_name} is out of sync with {cls.__name__} ({out_of_sync})",
                     mappings_in_sync=mappings_in_sync,
                     patterns_in_sync=patterns_in_sync,
                     settings_in_sync=settings_in_sync,
@@ -316,7 +332,7 @@ class EventLog(TimeseriesRecord):
 
 class CyclicReport(TimeseriesRecord):
     covers_from: datetime.date
-    covers_until: datetime.date
+    covers_before: datetime.date
 
     class Meta:
         abstract = True
@@ -331,9 +347,17 @@ class DjelmeElastic8Imp:
     namespace_prefix: str = ""
 
     @property
-    def elastic8_client(self):
+    def elastic8_client(self) -> Elastic8Client:
         # assumes `connections.configure` was already called
-        return connections.get_connection(self.imp_name)
+        return connections.get_connection(self._elastic8dsl_connection_name)
+
+    @property
+    def _elastic8dsl_connection_name(self) -> str:
+        return f"{self.imp_name}_conn"
+
+    @property
+    def _elastic8dsl_connection_kwargs(self) -> dict:
+        return self.imp_kwargs
 
     def setup_timeseries_indexes(self) -> None:
         for _recordtype in self._each_recordtype():
@@ -354,8 +378,8 @@ class DjelmeElastic8Imp:
             except NotFoundError:
                 pass
 
-    def _each_recordtype(self) -> collections.abc.Iterator[type]:
-        for _type in timeseries_type_registry.each_recordtype(imp_name=self.imp_name):
+    def _each_recordtype(self) -> collections.abc.Iterator[type[DjelmeRecord]]:
+        for _type in djelme_registry.each_recordtype(imp_name=self.imp_name):
             assert issubclass(_type, DjelmeRecord)
             yield _type
 
@@ -366,4 +390,10 @@ djelme_imp = DjelmeElastic8Imp  # for ProtoTimeseriesImpModule
 def djelme_when_ready(  # for ProtoTimeseriesImpModule
     imps: collections.abc.Iterable[ProtoTimeseriesImp],
 ) -> None:
-    connections.configure(**{_imp.imp_name: _imp.imp_kwargs for _imp in imps})
+    connections.configure(
+        **{
+            _imp._elastic8dsl_connection_name: _imp._elastic8dsl_connection_kwargs
+            for _imp in imps
+            if isinstance(_imp, DjelmeElastic8Imp)
+        }
+    )

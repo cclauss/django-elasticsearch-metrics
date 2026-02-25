@@ -30,20 +30,3 @@ DJELMETRICS_TIMESERIES_IMPS = {
         },
     },
 }
-DJELMETRICS_TIMESERIES_IMPS = {
-    "elastic6imp": {
-        "elasticsearch_metrics.imps.elastic6": {
-            "hosts": os.environ.get("ELASTICSEARCH6_HOST", ""),
-        },
-    },
-    "elastic8events": {
-        "elasticsearch_metrics.imps.elastic8": {
-            "hosts": os.environ.get("ELASTICSEARCH8_URL", ""),
-        },
-    },
-    "elastic8reports": {
-        "elasticsearch_metrics.imps.elastic8": {
-            "hosts": os.environ.get("ELASTICSEARCH8_URL", ""),
-        },
-    },
-}

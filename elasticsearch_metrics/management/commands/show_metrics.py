@@ -15,21 +15,20 @@ class Command(BaseCommand):
         if options["app_label"]:
             if options["app_label"] not in registry.all_recordtypes:
                 raise CommandError(
-                    "No metrics found for app '{}'".format(options["app_label"])
+                    "No recordtypes found for app '{}'".format(options["app_label"])
                 )
             app_labels = [options["app_label"]]
         else:
             app_labels = registry.all_recordtypes.keys()
         for app_label in app_labels:
             self.stdout.write(
-                "Metrics for '{}':".format(app_label), style.MIGRATE_HEADING
+                "Recordtypes for '{}':".format(app_label), style.MIGRATE_HEADING
             )
-            for metric in registry.each_recordtype(app_label=app_label):
-                metric_name = style.METRIC(metric.__name__)
-                template_name = metric._template_name
-                template_pattern = style.ES_TEMPLATE(metric._template_pattern)
+            for _imp in registry.each_imp(app_label=app_label):
+            for _recordtype in registry.each_recordtype(app_label=app_label):
+                _metric_name = style.METRIC(_recordtype.__name__)
+                _template_name = _recordtype.timeseries_template_name
+                _template_pattern = style.ES_TEMPLATE(_recordtype.timeseries_template_pattern)
                 self.stdout.write(
-                    "  {metric_name} -> {template_name} ({template_pattern})".format(
-                        **locals()
-                    )
+                    f"  {_metric_name} -> {_template_name} ({_template_pattern})"
                 )

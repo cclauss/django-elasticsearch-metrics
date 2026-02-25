@@ -18,6 +18,7 @@ from elasticsearch_metrics.exceptions import (
     IndexTemplateNotFoundError,
     IndexTemplateOutOfSyncError,
 )
+from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.tests._test_util import (
     SimpleDjelmeTestCase,
     MockSaveTestCase,
@@ -54,7 +55,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_get_index_template_returns_template_with_correct_name_and_pattern(self):
         template = ThingHappened.timeseries_template
         assert isinstance(template, ComposableIndexTemplate)
-        assert template._template_name == "dummy8app_happen__template"
+        assert template.timeseries_template_name == "dummy8app_happen__template"
         assert "dummy8app_happen_*" in template.to_dict()["index_patterns"]
 
     def test_get_index_template_respects_index_settings(self):
@@ -214,7 +215,7 @@ class TestSignals(MockSaveTestCase):
 class TestCreateDocument(RealElasticTestCase):
     @property
     def es8_client(self):
-        return connections.get_connection("elastic8events")
+        return djelme_registry.get_imp("elastic8events").elastic8_client
 
     def test_create_document(self):
         _thing_id = "12345"
@@ -241,11 +242,11 @@ class TestCreateDocument(RealElasticTestCase):
 class TestInit(RealElasticTestCase, auto_setup_imps=False):
     @property
     def es8_client(self):
-        return connections.get_connection("default")
+        return djelme_registry.get_imp("elastic8events").elastic8_client
 
     def test_init(self):
         ThingHappened.init()
-        name = ThingHappened.timeseries_index_name
+        name = ThingHappened.format_timeseries_index_name()
         mapping = self.es8_client.indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}

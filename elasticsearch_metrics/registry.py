@@ -18,15 +18,16 @@ class TimeseriesTypeRegistry:
     django.apps.registry.Apps keeps track of Model classes).
 
     Every time a TimeseriesRecord subtype is defined, TimeseriesRecord.__init_subclass__
-    calls timeseries_type_registry.register which creates an entry in all_recordtypes.
+    calls djelme_registry.register which creates an entry in all_recordtypes.
     """
 
-    # mapping of app labels => record-type names => record classes
+    # nested mapping of app labels => record-type names => record classes
     all_recordtypes: dict[str, dict[str, type]] = dataclasses.field(
         default_factory=lambda: collections.defaultdict(dict),
     )
 
-    # mapping of imp names => (imp module path, imp config)
+    # nested mapping of imp_name => imp_module_path => imp config dictionary
+    # (note, only one imp module allowed per module (for now))
     configured_imps: dict[str, tuple[str, dict[str, str]]] = dataclasses.field(
         default_factory=dict,
     )
@@ -57,7 +58,7 @@ class TimeseriesTypeRegistry:
     ) -> None:
         if imp_name in self.configured_imps:
             raise RuntimeError(f"duplicate imps named {imp_name!r}")
-        self.configured_imps[imp_name] = (imp_module_path, imp_kwargs)
+        self.configured_imps[imp_name] = {imp_module_path: imp_kwargs}
 
     ###
     # `get` methods: for accessing specific items in the registry
@@ -90,20 +91,13 @@ class TimeseriesTypeRegistry:
                 )
             ) from e
 
-    def get_imp_module(self, imp_name: str) -> ProtoTimeseriesImp:
-        try:
-            _imp_module_path, _ = self.configured_imps[imp_name]
-        except KeyError as _e:
-            raise LookupError(f"unknown imp {imp_name!r}") from _e
-        return _import_imp_module(_imp_module_path)
-
     def get_imp(self, imp_name: str, namespace_prefix: str = "") -> ProtoTimeseriesImp:
-        try:
-            _imp_module_path, _imp_kwargs = self.configured_imps[imp_name]
-        except KeyError as _e:
-            raise LookupError(f"unknown imp {imp_name!r}") from _e
-        _mod = _import_imp_module(_imp_module_path)
-        return _mod.djelme_imp(imp_name, _imp_kwargs, namespace_prefix)
+        _imp_module, _imp_kwargs = self._lookup_imp_module(imp_name)
+        return _imp_module.djelme_imp(imp_name, _imp_kwargs, namespace_prefix)
+
+    def get_imp_module(self, imp_name: str) -> ProtoTimeseriesImpModule:
+        _imp_module, _ = self._lookup_imp_module(imp_name)
+        return _imp_module
 
     ###
     # `each` methods: for iterating over each registered
@@ -115,7 +109,7 @@ class TimeseriesTypeRegistry:
     ) -> collections.abc.Iterator[type]:
         """Iterate registered metric classes, optionally filtered on an app_label and/or imp_name."""
         apps.check_apps_ready()
-        _imp_module = None if imp_name is None else self.get_imp_module(imp_name)
+        _imp_module = None if (imp_name is None) else self.get_imp_module(imp_name)
         app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for app_label in app_labels:
             for _recordtype in self._get_recordtypes_for_app(app_label).values():
@@ -124,19 +118,39 @@ class TimeseriesTypeRegistry:
                 ):
                     yield _recordtype
 
-    def each_imp(self) -> collections.abc.Iterator[ProtoTimeseriesImp]:
-        for _imp_name in self.configured_imps.keys():
-            yield self.get_imp(_imp_name)
+    def each_imp(
+        self,
+        *,
+        imp_module_path: str = "",
+    ) -> collections.abc.Iterator[ProtoTimeseriesImp]:
+        for _imp_name, _imp_config in self.configured_imps.items():
+            if (not imp_module_path) or (imp_module_path in _imp_config):
+                yield self.get_imp(_imp_name)
 
     ###
-    # callback methods
+    # `on` methods: for when things happen
+
     def on_app_ready(self) -> None:
-        for _imp_module_path, _imp_names in self._imps_by_module().items():
-            _imp_module = _import_imp_module(_imp_module_path)
-            _imp_module.djelme_when_ready(map(self.get_imp, _imp_names))
+        for _imp_module, _imps in self._imps_by_module():
+            _imp_module.djelme_when_ready(_imps)
 
     ###
     # private methods
+
+    def _lookup_imp(self, imp_name: str) -> tuple[str, dict[str, str]]:
+        try:
+            _imp_config = self.configured_imps[imp_name]
+        except KeyError as _e:
+            raise LookupError(f"unknown imp {imp_name!r}") from _e
+        assert len(_imp_config) == 1
+        ((_imp_module_path, _imp_kwargs),) = _imp_config.items()
+        return (_imp_module_path, _imp_kwargs)
+
+    def _lookup_imp_module(
+        self, imp_name: str
+    ) -> tuple[ProtoTimeseriesImpModule, dict[str, str]]:
+        _imp_module_path, _imp_kwargs = self._lookup_imp(imp_name)
+        return (_import_imp_module(_imp_module_path), _imp_kwargs)
 
     def _get_recordtypes_for_app(self, app_label: str) -> dict[str, type]:
         if app_label not in self.all_recordtypes:
@@ -149,11 +163,19 @@ class TimeseriesTypeRegistry:
         _upstream_modules = (_cls.__module__ for _cls in given_type.__mro__)
         return module_name in _upstream_modules
 
-    def _imps_by_module(self) -> dict[str, list[str]]:
+    def _imps_by_module(
+        self,
+    ) -> collections.abc.Iterator[
+        tuple[ProtoTimeseriesImpModule, list[ProtoTimeseriesImp]]
+    ]:
         _by_module = collections.defaultdict(list)
-        for _imp_name, (_imp_module_path, _) in self.configured_imps.items():
+        for _imp_name in self.configured_imps.keys():
+            _imp_module_path, _imp_kwargs = self._lookup_imp(_imp_name)
             _by_module[_imp_module_path].append(_imp_name)
-        return _by_module
+        for _imp_module_path, _imp_names in _by_module.items():
+            _imp_module = _import_imp_module(_imp_module_path)
+            _imps = [self.get_imp(_name) for _name in _imp_names]
+            yield (_imp_module, _imps)
 
 
 @functools.lru_cache
@@ -169,5 +191,5 @@ def _import_imp_module(imp_module_path: str) -> ProtoTimeseriesImpModule:
 ###
 # module public api
 
-timeseries_type_registry = TimeseriesTypeRegistry()
-registry = timeseries_type_registry  # convenience?
+djelme_registry = TimeseriesTypeRegistry()
+registry = djelme_registry  # convenience?
