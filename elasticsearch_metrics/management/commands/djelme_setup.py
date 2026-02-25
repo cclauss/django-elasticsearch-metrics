@@ -23,7 +23,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         style = color_style()
         _app_label = options["app_label"]
-        _imp_name = options["imp_name"]
+        _imp_name = options["imp"]
         if _app_label:
             if _app_label not in registry.all_recordtypes:
                 raise CommandError(
@@ -45,14 +45,7 @@ class Command(BaseCommand):
                 else registry.each_recordtype(app_label=app_label)
             )
             for _recordtype in _each_recordtype:
-                _recordtype_name = style.TYPENAME(_recordtype.__name__)
-                _template_name = _recordtype.timeseries_template_name
-                _template_pattern = style.ES_TEMPLATE(
-                    _recordtype.timeseries_template_pattern
-                )
-                self.stdout.write(
-                    f"  Syncing {_recordtype_name} -> {_template_name} ({_template_pattern})"
-                )
-                _recordtype.sync_index_template(using=connection)
+                self.stdout.write(f"  Setting up {_recordtype!r}...")
+                _recordtype.sync_index_template()
 
         self.stdout.write("Synchronized recordtypes.", style.SUCCESS)

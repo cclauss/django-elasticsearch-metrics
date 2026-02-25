@@ -24,15 +24,8 @@ class Command(BaseCommand):
             self.stdout.write(
                 "Recordtypes for '{}':".format(app_label), style.MIGRATE_HEADING
             )
-            for _imp in registry.each_imp(app_label=app_label):
+            for _imp in registry.each_imp():
                 for _recordtype in registry.each_recordtype(
                     app_label=app_label, imp_name=_imp.imp_name
                 ):
-                    _recordtype_name = style.TYPENAME(_recordtype.__name__)
-                    _template_name = _recordtype.timeseries_template_name
-                    _template_pattern = style.ES_TEMPLATE(
-                        _recordtype.timeseries_template_pattern
-                    )
-                    self.stdout.write(
-                        f"  {_recordtype_name} -> {_template_name} ({_template_pattern})"
-                    )
+                    self.stdout.write(f"  {_recordtype!r}")

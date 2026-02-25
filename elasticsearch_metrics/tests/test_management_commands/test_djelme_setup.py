@@ -38,7 +38,11 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
                 app_label = "dummyapp2"
 
         out, err = self.run_mgmt_command(djelme_setup.Command, "dummyapp2")
-        assert self.mock_sync_index_template.call_count == 1
+        _call_count = (
+            self.mock6_sync_index_template.call_count
+            + self.mock8_sync_index_template.call_count
+        )
+        assert _call_count == 1
 
     @skip("TODO: connection selection")
     def test_with_connection(self):

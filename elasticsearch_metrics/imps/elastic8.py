@@ -21,7 +21,6 @@ import dataclasses
 import datetime
 import logging
 
-from django.apps import apps
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8 import Elasticsearch as Elastic8Client
@@ -64,10 +63,12 @@ class _DjelmeRecordMeta(IndexMeta):
             _cls.Meta = _doc_type_meta
         # register non-abstract subtypes
         if not _cls.is_abstract:
-            djelme_registry.register_recordtype(_cls.app_label, _cls)
+            djelme_registry.register_recordtype(
+                _cls, app_label=_cls._get_meta_attr("app_label", None)
+            )
         return _cls
 
-    def _get_meta_attr(self, attr_name: str, default=None) -> bool:
+    def _get_meta_attr(self, attr_name: str, default=None):
         _meta = getattr(self, "Meta", None)
         return getattr(_meta, attr_name, default)
 
@@ -76,32 +77,8 @@ class _DjelmeRecordMeta(IndexMeta):
         return self._get_meta_attr("abstract", False)
 
     @property
-    def app_label(self) -> str:
-        _app_label = self._get_meta_attr("app_label")
-        if _app_label is None:
-            _app_label = self._find_app_label()
-        assert isinstance(_app_label, str)
-        return _app_label
-
-    def _find_app_label(self) -> str:
-        # Look for an application configuration to attach the model to.
-        _containing_app_configs = sorted(
-            (
-                _app_config
-                for _app_config in apps.get_app_configs()
-                if self.__module__.startswith(_app_config.module.__name__)
-            ),
-            key=lambda _config: len(_config.module.__name__),
-            reverse=True,  # longest module name first
-        )
-        if not _containing_app_configs:
-            raise RuntimeError(
-                "document class %s.%s doesn't declare an explicit "
-                "app_label and isn't in an application in "
-                "INSTALLED_APPS." % (self.__module__, self.__qualname__)
-            )
-        _app_config = _containing_app_configs[0]
-        return _app_config.label
+    def app_label(self) -> str | None:
+        return djelme_registry.get_recordtype_app_label(self)
 
 
 class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
@@ -397,5 +374,3 @@ def djelme_when_ready(  # for ProtoTimeseriesImpModule
             for _imp in imps
         }
     )
-    for _imp in imps:
-

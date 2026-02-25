@@ -92,6 +92,17 @@ class TimeseriesTypeRegistry:
                 )
             ) from e
 
+    def get_recordtype_app_label(self, recordtype: type) -> str | None:
+        _each_matching_app_label = (
+            _app_label
+            for _app_label, _types in self.all_recordtypes.items()
+            if _types.get(recordtype.__name__.lower()) is recordtype
+        )
+        _res = next(_each_matching_app_label, None)
+        if not _res:
+            breakpoint()
+        return _res
+
     def get_imp(self, imp_name: str, namespace_prefix: str = "") -> ProtoTimeseriesImp:
         _imp_module, _imp_kwargs = self._lookup_imp_module(imp_name)
         return _imp_module.djelme_imp(imp_name, _imp_kwargs, namespace_prefix)

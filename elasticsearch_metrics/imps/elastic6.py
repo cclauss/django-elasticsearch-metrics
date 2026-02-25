@@ -87,7 +87,7 @@ class MetricMeta(IndexMeta):
         # Abstract base metrics can't be instantiated and don't appear in
         # the list of metrics for an app.
         if not abstract:
-            registry.register_recordtype(app_label, new_cls)
+            registry.register_recordtype(new_cls, app_label=app_label)
         return new_cls
 
     # Override IndexMeta.construct_index so that
@@ -244,6 +244,11 @@ class BaseMetric(metaclass=MetricMeta):
         index = cls.get_index_name(timestamp)
         instance.save(index=index)
         return instance
+
+    @classmethod
+    @property
+    def timeseries_template_name(cls) -> str:
+        return cls._template_name
 
 
 class Metric(Document, BaseMetric):

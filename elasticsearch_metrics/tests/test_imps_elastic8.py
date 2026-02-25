@@ -54,9 +54,10 @@ class TestFormatIndexName(SimpleDjelmeTestCase):
 class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_get_index_template_returns_template_with_correct_name_and_pattern(self):
         template = ThingHappened.timeseries_template
-        assert isinstance(template, ComposableIndexTemplate)
-        assert template.timeseries_template_name == "dummy8app_happen__template"
-        assert "dummy8app_happen_*" in template.to_dict()["index_patterns"]
+        self.assertIsInstance(template, ComposableIndexTemplate)
+        self.assertEqual(template._template_name, "dummy8app_happen__template")
+        _template_dict = template.to_dict()
+        self.assertEqual(_template_dict["index_patterns"], ["dummy8app_happen_*"])
 
     def test_get_index_template_respects_index_settings(self):
         template = ThingHappened.timeseries_template
