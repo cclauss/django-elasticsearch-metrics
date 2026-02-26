@@ -10,38 +10,30 @@ from elasticsearch_metrics.management.color import color_style
 
 
 class Command(BaseCommand):
-    help = "Check if registered metrics have a corresponding index templates in Elasticsearch."
+    help = "Check if registered recordtypes have a corresponding index templates in Elasticsearch."
 
     def add_arguments(self, parser):
         parser.add_argument("app_label", nargs="?", help="App label of an application.")
-        parser.add_argument(
-            "--connection",
-            action="store",
-            dest="connection",
-            default=None,
-            help='Elasticsearch connection to use. Defaults to the "default" connection.',
-        )
 
     def handle(self, *args, **options):
         # Avoid elasticsearch requests from getting logged
         logging.getLogger("elasticsearch").setLevel(logging.CRITICAL)
         style = color_style()
-        connection = options["connection"]
         if options["app_label"]:
-            if options["app_label"] not in registry.all_metrics:
+            if options["app_label"] not in registry.all_recordtypes:
                 raise CommandError(
-                    "No metrics found for app '{}'".format(options["app_label"])
+                    "No recordtypes found for app '{}'".format(options["app_label"])
                 )
             app_labels = [options["app_label"]]
         else:
-            app_labels = registry.all_metrics.keys()
+            app_labels = list(registry.each_imp_app_label())
 
         out_of_sync_count = 0
         self.stdout.write("Checking for outdated index templates...")
         for app_label in app_labels:
-            for metric in registry.get_metrics(app_label=app_label):
+            for _recordtype in registry.each_recordtype(app_label=app_label):
                 try:
-                    metric.check_index_template(using=connection)
+                    _recordtype.check_index_template()
                 except (
                     exceptions.IndexTemplateNotFoundError,
                     exceptions.IndexTemplateOutOfSyncError,
@@ -51,11 +43,11 @@ class Command(BaseCommand):
 
         if out_of_sync_count:
             self.stdout.write(
-                "{} index template(s) out of sync.".format(out_of_sync_count),
+                "{} index template(s) not set up.".format(out_of_sync_count),
                 style.ERROR,
             )
-            cmd = colorize("python manage.py sync_metrics", opts=("bold",))
-            self.stdout.write("Run {cmd} to synchronize.".format(cmd=cmd))
+            cmd = colorize("python manage.py djelme_setup", opts=("bold",))
+            self.stdout.write("Run {cmd} to set up index templates.".format(cmd=cmd))
             sys.exit(1)
         else:
-            self.stdout.write("All metrics in sync.", style.SUCCESS)
+            self.stdout.write("All djelme recordtypes set up.", style.SUCCESS)

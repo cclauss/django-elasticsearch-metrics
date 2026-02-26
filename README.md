@@ -47,7 +47,7 @@ from elasticsearch_metrics.imps import elastic8
 
 
 class PageView(elastic8.EventLog):
-    user_id = metrics.Integer(index=True, doc_values=True)
+    page_id: int
 ```
 
 Use the `sync_metrics` management command to ensure that the [index template](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-templates.html)
@@ -63,12 +63,10 @@ Now add some data:
 ```python
 from myapp.metrics import PageView
 
-user = User.objects.latest()
-
 # By default we create an index for each day.
 # Therefore, this will persist the document
-# to an index called, e.g. "myapp_pageview_2020.02.04"
-PageView.record(user_id=user.id)
+# to an index named for the record type and date
+PageView.record(page_id='my.page.id')
 ```
 
 Go forth and search!
@@ -102,7 +100,7 @@ You can configure the index template settings by setting
 
 ```python
 class PageView(metrics.Metric):
-    user_id = metrics.Integer()
+    page_id = metrics.Integer()
 
     class Index:
         settings = {"number_of_shards": 2, "refresh_interval": "5s"}
@@ -130,7 +128,7 @@ Alternatively, you can set `template_name` and/or `template` explicitly.
 
 ```python
 class PageView(metrics.Metric):
-    user_id = metrics.Integer()
+    page_id = metrics.Integer()
 
     class Meta:
         template_name = "myapp_pviews"
@@ -144,7 +142,7 @@ from elasticsearch_metrics import metrics
 
 
 class MyBaseMetric(metrics.Metric):
-    user_id = metrics.Integer()
+    page_id = metrics.Integer()
 
     class Meta:
         abstract = True
@@ -186,11 +184,10 @@ def test_something():
 
 ## Management commands
 
-* `sync_metrics`: Ensure that index templates have been created for
-    your metrics.
-* `show_metrics`: Pretty-print a listing of all registered metrics.
-* `check_metrics`: Check if index templates are in sync. Exits
-    with an error code if any metrics are out of sync.
+* `djelme_types`: Pretty-print a listing of all registered record types.
+* `djelme_setup`: Ensure that index templates have been created for your record types.
+* `djelme_check`: Check if index templates are in sync. Exits
+    with an error code if any templates are out of sync.
 
 <!-- * `clean_metrics` : Clean old data using [curator](https://curator.readthedocs.io/en/latest/). -->
 <!--  -->

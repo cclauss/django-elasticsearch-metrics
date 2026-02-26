@@ -1,31 +1,32 @@
-"""elasticsearch_metrics.imps.elastic6: store events and reports in elasticsearch 6"""
+"""elasticsearch_metrics.imps.elastic6: store events and reports in elasticsearch 6
+
+consider this code frozen/deprecated -- will be removed once no longer needed
+"""
 
 from collections import ChainMap
 from collections.abc import Iterator
 import dataclasses
-import functools
 import logging
 
 from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch6.exceptions import NotFoundError
-from elasticsearch6_dsl import Document, connections
+import elasticsearch6_dsl
+from elasticsearch6_dsl import Document, connections, Date
 from elasticsearch6_dsl.document import IndexMeta, MetaField
 from elasticsearch6_dsl.index import Index
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
-from elasticsearch_metrics.protocols import ProtoDjelmetricsImp
-from elasticsearch_metrics.registry import registry
-
-# Fields should be imported from this module
-from elasticsearch_metrics.field import *  # noqa: F40
-from elasticsearch_metrics.field import Date
+from elasticsearch_metrics.protocols import ProtoTimeseriesImp
+from elasticsearch_metrics.registry import djelme_registry
 
 DEFAULT_DATE_FORMAT = "%Y.%m.%d"
 
 logger = logging.getLogger(__name__)
+
+fields = elasticsearch6_dsl.field
 
 
 class ReadonlyAttrMap:
@@ -40,6 +41,12 @@ class ReadonlyAttrMap:
 
     def __contains__(self, key):
         return hasattr(self.__inner_obj, key)
+
+
+def _get_default_using():
+    """get the elasticsearch-dsl connection name to use"""
+    _each_imp_name = djelme_registry.each_imp_name(imp_module_path=__name__)
+    return next(_each_imp_name)
 
 
 class MetricMeta(IndexMeta):
@@ -86,7 +93,7 @@ class MetricMeta(IndexMeta):
         # Abstract base metrics can't be instantiated and don't appear in
         # the list of metrics for an app.
         if not abstract:
-            registry.register(app_label, new_cls)
+            djelme_registry.register_recordtype(new_cls, app_label=app_label)
         return new_cls
 
     # Override IndexMeta.construct_index so that
@@ -104,7 +111,7 @@ class MetricMeta(IndexMeta):
 
         i = Index(
             index_config.get("name", "*"),
-            using=index_config.get("using", "default"),
+            using=index_config.get("using", _get_default_using()),
         )
         i.settings(**index_config.get("settings", {}))
         i.aliases(**index_config.get("aliases", {}))
@@ -126,7 +133,7 @@ class BaseMetric(metaclass=MetricMeta):
 
 
         class PageView(metrics.Metric):
-            user_id = metrics.Integer(index=True, doc_values=True)
+            page_id = metrics.Integer(index=True, doc_values=True)
 
             class Index:
                 settings = {
@@ -143,7 +150,7 @@ class BaseMetric(metaclass=MetricMeta):
     @classmethod
     def sync_index_template(cls, using=None):
         """Sync the index template for this metric in Elasticsearch."""
-        index_template = cls.get_index_template()
+        index_template = cls.get_timeseries_index_template()
         index_template.document(cls)
         signals.pre_index_template_create.send(
             cls, index_template=index_template, using=using
@@ -164,7 +171,7 @@ class BaseMetric(metaclass=MetricMeta):
         :return: True if index template exsits and mappings, settings, and index patterns
             are in sync.
         """
-        client = connections.get_connection(using or "default")
+        client = cls._get_connection(using=using)
         try:
             template = client.indices.get_template(cls._template_name)
         except NotFoundError as client_error:
@@ -176,7 +183,7 @@ class BaseMetric(metaclass=MetricMeta):
             ) from client_error
         else:
             current_data = list(template.values())[0]
-            template_data = cls.get_index_template().to_dict()
+            template_data = cls.get_timeseries_index_template().to_dict()
 
             mappings_in_sync = current_data["mappings"] == template_data["mappings"]
             if "settings" in current_data and "index" in current_data["settings"]:
@@ -218,14 +225,14 @@ class BaseMetric(metaclass=MetricMeta):
             return True
 
     @classmethod
-    def get_index_template(cls):
+    def get_timeseries_index_template(cls):
         """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
         return cls._index.as_template(
             template_name=cls._template_name, pattern=cls._template_pattern
         )
 
     @classmethod
-    def get_index_name(cls, date=None):
+    def get_index_name(cls, date=None) -> str:
         date = date or timezone.now().date()
         dateformat = getattr(
             settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
@@ -276,29 +283,45 @@ class Metric(Document, BaseMetric):
         """
         return index or cls._template_pattern
 
+    @classmethod
+    def _get_using(cls, using=None):
+        """get the elasticsearch6_dsl connection name to use
+
+        overrides elasticsearch6.Document._get_using to allow
+        getting connection name from a djelme imp and default
+        to the first configured imp that uses this imp module
+        """
+        _imp = None
+        if using in (None, "default"):
+            return _get_default_using()
+        elif isinstance(using, str) and (using in djelme_registry.configured_imps):
+            _imp = djelme_registry.get_imp(using)
+            assert isinstance(_imp, DjelmeElastic6Imp)
+            return _imp.imp_name
+        return super()._get_using(using)
+
 
 @dataclasses.dataclass
-class DjelmeElastic6Imp(ProtoDjelmetricsImp):
+class DjelmeElastic6Imp:
     """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)"""
 
     imp_name: str
-    imp_config: dict[str, str]
+    imp_kwargs: dict[str, str]
+    namespace_prefix: str = ""
 
-    @functools.cached_property
+    @property
     def elastic6_client(self):
-        # assumes `configure` was already called
+        # assumes `connections.configure` was already called
         return connections.get_connection(self.imp_name)
 
-    def configure(self) -> None:
-        connections.configure(**{self.imp_name: self.imp_config})
-
-    def setup_db(self) -> None:
+    def setup_timeseries_indexes(self) -> None:
         for _metric_type in self._each_metric_type():
-            # TODO: logger.info
+            logger.info("setting up %r", _metric_type)
             _metric_type.sync_index_template(using=self.elastic6_client)
 
-    def teardown_db(self) -> None:
+    def teardown_timeseries_indexes(self) -> None:
         for _metric_type in self._each_metric_type():
+            logger.info("tearing down %r", _metric_type)
             _indexname_wildcard = _metric_type._template_pattern
             _templatename = _metric_type._template_name
             self.elastic6_client.indices.delete(index=_indexname_wildcard)
@@ -308,8 +331,15 @@ class DjelmeElastic6Imp(ProtoDjelmetricsImp):
                 pass
 
     def _each_metric_type(self) -> Iterator[type[Metric]]:
-        for _metric in registry.get_metrics(imp_name=self.imp_name):
+        for _metric in djelme_registry.each_recordtype(imp_name=self.imp_name):
+            assert issubclass(_metric, Metric)
             yield _metric
 
 
-djelme_imp_from_config = DjelmeElastic6Imp  # for ProtoDjelmetricsImpModule
+djelme_imp = DjelmeElastic6Imp  # for ProtoTimeseriesImpModule
+
+
+def djelme_when_ready(  # for ProtoTimeseriesImpModule
+    imps: Iterator[ProtoTimeseriesImp],
+) -> None:
+    connections.configure(**{_imp.imp_name: _imp.imp_kwargs for _imp in imps})

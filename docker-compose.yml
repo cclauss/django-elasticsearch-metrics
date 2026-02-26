@@ -8,6 +8,17 @@ services:
       test: curl -s http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
     networks:
       - djelme
+  elasticsearch8:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.11
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+    healthcheck:
+      interval: 30s
+      retries: 10
+      test: curl -s http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+    networks:
+      - djelme
   testbox:
     build:
       context: .
@@ -15,9 +26,12 @@ services:
     depends_on:
       elasticsearch6:
         condition: service_healthy
+      elasticsearch8:
+        condition: service_healthy
     environment:
       # TOXENV: py310-django42
-      ELASTICSEARCH6_HOST: elasticsearch6:9200
+      ELASTICSEARCH6_URL: elasticsearch6:9200
+      ELASTICSEARCH8_URL: http://elasticsearch8:9200
     networks:
       - djelme
     # volumes:

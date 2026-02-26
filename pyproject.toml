@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<4"
 keywords = [
     "django",
     "elastic",
@@ -38,8 +38,9 @@ classifiers = [
 
 [project.optional-dependencies]
 elastic6 = [ "elasticsearch6-dsl>=6.3.0,<7.0.0" ]
-# elastic8 = [ "elasticsearch8>=8.0.0,<9.0.0" ]
+elastic8 = [ "elasticsearch8>=8.0.0,<9.0.0" ]
 # elastic9 = [ "elasticsearch9>=9.0.0,<10.0.0" ]
+anydjango = [ "django" ]
 
 [project.urls]
 repository = "http://github.com/CenterForOpenScience/django-elasticsearch-metrics"
@@ -55,7 +56,6 @@ tests = [
     "tox>=4.0.0",
 ]
 lint = [
-    "pre-commit==2.17.0",
     "flake8==7.3.0",
     "flake8-bugbear==25.10.21",
     "black==25.11.0",
@@ -64,6 +64,7 @@ dev = [
     { include-group = "tests" },
     { include-group = "lint" },
     "konch>=3.0.0",
+    "poetry==2.3.2",  # matches testbox.Containerfile
 ]
 
 [tool.poetry]

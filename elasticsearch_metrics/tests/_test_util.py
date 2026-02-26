@@ -5,7 +5,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.test import SimpleTestCase
 
-from elasticsearch_metrics.djelmetrics_imps import each_djelmetrics_imp
+from elasticsearch_metrics.registry import djelme_registry
 
 
 class SimpleDjelmeTestCase(SimpleTestCase):
@@ -42,9 +42,16 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     __auto_setup_imps: bool
 
-    def __init_subclass__(cls, /, auto_setup_imps: bool = True, **kwargs):
+    def __init_subclass__(
+        cls,
+        /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, auto_setup_imps=False)
+        auto_setup_imps: bool = True,
+        auto_teardown_imps: bool = True,
+        **kwargs,
+    ):
         super().__init_subclass__(**kwargs)
         cls.__auto_setup_imps = auto_setup_imps
+        cls.__auto_teardown_imps = auto_teardown_imps
 
     def setUp(self):
         super().setUp()
@@ -53,22 +60,26 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     def tearDown(self):
         super().tearDown()
-        self.teardown_djelme_imps()
+        if self.__auto_teardown_imps:
+            self.teardown_djelme_imps()
 
     def setup_djelme_imps(self):
         # TODO: prefix index names, avoid collisions across test runs
-        # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_IMPS
-        self.teardown_djelme_imps()  # in case any already exist
-        for _imp in each_djelmetrics_imp():
-            _imp.setup_db()
+        # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_TIMESERIES_IMPS
+        # self.teardown_djelme_imps()  # in case any already exist
+        for _imp in djelme_registry.each_imp():
+            _imp.setup_timeseries_indexes()
 
     def teardown_djelme_imps(self):
-        for _imp in each_djelmetrics_imp():
-            _imp.teardown_db()
+        for _imp in djelme_registry.each_imp():
+            _imp.teardown_timeseries_indexes()
 
 
 class MockSaveTestCase(SimpleDjelmeTestCase):
     def setUp(self):
         self.mocked_es6_save = self.enterContext(
             mock.patch("elasticsearch_metrics.imps.elastic6.Document.save"),
+        )
+        self.mocked_es8_save = self.enterContext(
+            mock.patch("elasticsearch_metrics.imps.elastic8.Document.save"),
         )
