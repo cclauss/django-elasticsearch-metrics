@@ -34,7 +34,7 @@ route_prefix_analyzer = analyzer(
 
 class PreprintView(elastic6.Metric):
     provider_id = elastic6.fields.Keyword(index=True)
-    user_id = elastic6.fields.Keyword(index=True)
+    page_id = elastic6.fields.Keyword(index=True)
     preprint_id = elastic6.fields.Keyword(index=True)
     route_name = elastic6.fields.Text(analyzer=route_prefix_analyzer)
 
@@ -105,7 +105,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
         assert "timestamp" in properties
         assert properties["timestamp"] == {"doc_values": True, "type": "date"}
         assert properties["provider_id"] == {"type": "keyword", "index": True}
-        assert properties["user_id"] == {"type": "keyword", "index": True}
+        assert properties["page_id"] == {"type": "keyword", "index": True}
         assert properties["preprint_id"] == {"type": "keyword", "index": True}
 
     # regression test
@@ -157,7 +157,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_inheritance(self):
         class MyBaseMetric(elastic6.Metric):
-            user_id = elastic6.fields.Keyword(index=True)
+            page_id = elastic6.fields.Keyword(index=True)
 
             class Index:
                 settings = {"number_of_shards": 2}
@@ -230,10 +230,10 @@ class TestSignals(MockSaveTestCase):
         signals.post_save.connect(mock_post_save_listener, sender=PreprintView)
 
         provider_id = "12345"
-        user_id = "abcde"
+        page_id = "abcde"
         preprint_id = "zyxwv"
         doc = PreprintView(
-            provider_id=provider_id, user_id=user_id, preprint_id=preprint_id
+            provider_id=provider_id, page_id=page_id, preprint_id=preprint_id
         )
         doc.save()
 
@@ -259,10 +259,10 @@ class TestIntegration(RealElasticTestCase):
 
     def test_create_document(self):
         provider_id = "12345"
-        user_id = "abcde"
+        page_id = "abcde"
         preprint_id = "zyxwv"
         doc = PreprintView(
-            provider_id=provider_id, user_id=user_id, preprint_id=preprint_id
+            provider_id=provider_id, page_id=page_id, preprint_id=preprint_id
         )
         doc.save()
         document = PreprintView.get(id=doc.meta.id, index=PreprintView.get_index_name())
@@ -274,7 +274,7 @@ class TestIntegration(RealElasticTestCase):
         properties = mapping[name]["mappings"]["doc"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["provider_id"] == {"type": "keyword"}
-        assert properties["user_id"] == {"type": "keyword"}
+        assert properties["page_id"] == {"type": "keyword"}
         assert properties["preprint_id"] == {"type": "keyword"}
 
 
@@ -290,7 +290,7 @@ class TestIntegrationSetup(RealElasticTestCase, auto_setup_imps=False):
         properties = mapping[name]["mappings"]["doc"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["provider_id"] == {"type": "keyword"}
-        assert properties["user_id"] == {"type": "keyword"}
+        assert properties["page_id"] == {"type": "keyword"}
         assert properties["preprint_id"] == {"type": "keyword"}
 
     def test_check_index_template(self):

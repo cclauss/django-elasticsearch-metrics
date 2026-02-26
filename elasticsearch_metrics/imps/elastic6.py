@@ -133,7 +133,7 @@ class BaseMetric(metaclass=MetricMeta):
 
 
         class PageView(metrics.Metric):
-            user_id = metrics.Integer(index=True, doc_values=True)
+            page_id = metrics.Integer(index=True, doc_values=True)
 
             class Index:
                 settings = {
