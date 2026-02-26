@@ -30,7 +30,7 @@ services:
         condition: service_healthy
     environment:
       # TOXENV: py310-django42
-      ELASTICSEARCH6_HOST: elasticsearch6:9200
+      ELASTICSEARCH6_URL: elasticsearch6:9200
       ELASTICSEARCH8_URL: http://elasticsearch8:9200
     networks:
       - djelme

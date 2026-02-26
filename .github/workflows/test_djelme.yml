@@ -35,6 +35,10 @@ jobs:
         image: elasticsearch:6.8.23
         ports:
           - 9206:9200
+      elasticsearch8:
+        image: elasticsearch:8.19.11
+        ports:
+          - 9208:9200
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,8 +50,9 @@ jobs:
         run: alias python${{ steps.setup-py.outputs.python-version }}=${{ steps.setup-py.outputs.python-path }}
 
       - name: install despondencies
-        run: pip install -U poetry && poetry install --with=dev --extras=elastic6
+        run: pip install -U poetry && poetry install --with=dev --extras=elastic6 --extras=elastic8
 
       - run: TOXENV=`echo 'py${{ matrix.python }}-django${{matrix.django}}' | sed 's/\.//g'` poetry run tox
         env:
-          ELASTICSEARCH6_HOST: localhost:9206
+          ELASTICSEARCH6_URL: http://localhost:9206
+          ELASTICSEARCH8_URL: http://localhost:9208

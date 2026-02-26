@@ -59,3 +59,5 @@ if __name__ == "__main__":
 
     if not _args.no_lint:
         run_lint()
+
+    print("\n-- all done --")

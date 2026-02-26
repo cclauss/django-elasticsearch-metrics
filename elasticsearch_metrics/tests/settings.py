@@ -16,7 +16,10 @@ DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": "test_d
 DJELMETRICS_TIMESERIES_IMPS = {
     "elastic6imp": {
         "elasticsearch_metrics.imps.elastic6": {
-            "hosts": os.environ.get("ELASTICSEARCH6_HOST", ""),
+            "hosts": (
+                os.environ.get("ELASTICSEARCH6_URL", "")
+                or os.environ.get("ELASTICSEARCH6_HOST", "")
+            ),
         },
     },
     "elastic8events": {
