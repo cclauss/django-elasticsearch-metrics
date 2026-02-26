@@ -17,9 +17,9 @@ jobs:
         id: setup-py
         with:
           python-version: '3.11'
-      - run: pip install .[lint]
-      - run: python -m elasticsearch_metrics.tests --lint
-
+      - run: pip install poetry
+      - run: poetry install --no-root --with=lint
+      - run: poetry run python -m elasticsearch_metrics.tests --lint
 
   test:
     runs-on: ubuntu-latest
