@@ -44,7 +44,7 @@ def _run(*args):
 
 def run_lint():
     _run("poetry", "run", "flake8")
-    _run("poetry", "run", "black", "--check", "--quiet", ".")
+    _run("poetry", "run", "black", "--check", ".")
     # TODO: mypy?
 
 

@@ -214,7 +214,7 @@ def _import_imp_module(imp_module_path: str) -> ProtoTimeseriesImpModule:
         _imp_module = importlib.import_module(imp_module_path)
     except ImportError as _error:
         raise ValueError(f"could not import {imp_module_path!r}") from _error
-    # assert isinstance(_imp_module, ProtoTimeseriesImpModule)  # TODO: full imp
+    assert isinstance(_imp_module, ProtoTimeseriesImpModule)
     return _imp_module
 
 
