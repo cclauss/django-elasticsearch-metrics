@@ -1,13 +1,13 @@
 [project]
 name = "django-elasticsearch-metrics"
-version = "2025.0.0"
+version = "2026.0.0"
 description = "Django app for storing time-series metrics in Elasticsearch."
 authors = [
     {name = "CenterForOpenScience", email = "support@cos.io"}
 ]
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<4"
 keywords = [
     "django",
     "elastic",
@@ -64,6 +64,7 @@ dev = [
     { include-group = "tests" },
     { include-group = "lint" },
     "konch>=3.0.0",
+    "poetry>=2.0.0",
 ]
 
 [tool.poetry]
