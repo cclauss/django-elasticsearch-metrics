@@ -30,8 +30,11 @@ class ElasticsearchMetricsConfig(AppConfig):
         # autosync
         if getattr(settings, AUTOSYNC_SETTING, False):
             for _imp in djelme_registry.each_imp():
-                for _recordtype in djelme_registry.each_recordtype(imp_name=_imp.imp_name):
+                for _recordtype in djelme_registry.each_recordtype(
+                    imp_name=_imp.imp_name
+                ):
                     _recordtype.setup_timeseries_indexes()
+
 
 ###
 # accessing django settings

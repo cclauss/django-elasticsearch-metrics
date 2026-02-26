@@ -26,7 +26,7 @@ class Command(BaseCommand):
                 )
             app_labels = [options["app_label"]]
         else:
-            app_labels = registry.all_recordtypes.keys()
+            app_labels = list(registry.each_imp_app_label())
 
         out_of_sync_count = 0
         self.stdout.write("Checking for outdated index templates...")
@@ -50,4 +50,4 @@ class Command(BaseCommand):
             self.stdout.write("Run {cmd} to set up index templates.".format(cmd=cmd))
             sys.exit(1)
         else:
-            self.stdout.write("All recordtypes set up.", style.SUCCESS)
+            self.stdout.write("All djelme recordtypes set up.", style.SUCCESS)

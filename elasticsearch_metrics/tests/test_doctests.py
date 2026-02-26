@@ -9,10 +9,7 @@ _MODULES_WITH_DOCTESTS = (
 )
 
 
-_DOCTEST_OPTIONFLAGS = (
-    doctest.ELLIPSIS
-    | doctest.NORMALIZE_WHITESPACE
-)
+_DOCTEST_OPTIONFLAGS = doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
 
 
 def load_tests(loader, tests, ignore):

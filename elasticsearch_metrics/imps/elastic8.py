@@ -95,7 +95,16 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
     True
     >>> MyAbstractRecord.is_abstract
     True
-    >>> MyAbstractRecord.app_label
+
+    >>> class MyConcreteRecord(MyAbstractRecord):
+    ...     bar: int
+    ...     class Meta:
+    ...         bleg = 7
+    >>> MyConcreteRecord.Meta.bleg
+    7
+    >>> MyConcreteRecord.is_abstract
+    False
+    >>> MyConcreteRecord.app_label
     'elasticsearch_metrics'
     """
 

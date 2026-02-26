@@ -13,17 +13,18 @@ __all__ = (
     "parse_index_pattern",
     "format_namepart",
     "format_template_name",
-    "TimeseriesIndexNamePattern",
 )
 
 from collections.abc import Iterator
-import dataclasses
 import datetime
 import itertools
 
 _DELIMITER: str = "_"
 _TIMEPART_MIN_LEN: int = 2
 _TEMPLATE_NAME_SUFFIX = "_template"
+
+
+TimeseriesIndexNamePattern = tuple[str, str, tuple[int, ...]]
 
 
 def format_index_name(
@@ -79,7 +80,9 @@ def format_namepart(namepart: str) -> str:
 def parse_index_name(given_name: str) -> TimeseriesIndexNamePattern:
     """
     >>> parse_index_name('blah_fleh_1123_58')
+    ('blah', 'fleh', (1123, 58))
     >>> parse_index_name('aoeu_mynote_2001')
+    ('aoeu', 'mynote', (2001,))
     """
     _prefix, _recordtype, _timename = given_name.split(_DELIMITER, maxsplit=2)
     return (_prefix, _recordtype, tuple(_parse_timename(_timename)))
@@ -88,39 +91,16 @@ def parse_index_name(given_name: str) -> TimeseriesIndexNamePattern:
 def parse_index_pattern(given_pattern: str) -> TimeseriesIndexNamePattern:
     """
     >>> parse_index_pattern('blah_fleh_1123_58')
+    ('blah', 'fleh', (1123, 58))
     >>> parse_index_pattern('aoeu_mynote_2001_')
-    >>> parse_index_pattern('7766_5_*')
-    >>> parse_index_pattern('7766_555_*')
+    ('aoeu', 'mynote', (2001,))
+    >>> parse_index_pattern('a_b_7766_5_*')
+    ('a', 'b', (7766, 5))
+    >>> parse_index_pattern('a_b_7766_555_*')
+    ('a', 'b', (7766, 555))
     """
     _prefix, _recordtype, _timename = given_pattern.split(_DELIMITER, maxsplit=2)
     return (_prefix, _recordtype, tuple(_parse_timename(_timename)))
-
-
-def broaden_time(self) -> TimeseriesIndexNamePattern:
-    """
-    >>> _its = TimeseriesIndexNamePattern('aoeu', 'mynote', (9999,22))
-    >>> str(_its)
-    'aoeu_mynote_9999_22'
-    >>> str(_its.broaden_time())
-    'aoeu_mynote_9999'
-    >>> str(_its.broaden_time().broaden_time())
-    'aoeu_mynote'
-
-    but can't broaden_time past recordtype
-    >>> str(_its.broaden_time().broaden_time().broaden_time())
-    'aoeu_mynote*'
-    """
-    return dataclasses.replace(self, time_parts=tuple(self.time_parts[:-1]))
-
-
-@dataclasses.dataclass
-class TimeseriesIndexNamePattern:
-    prefix: str
-    recordtype: str
-    timeparts: tuple[int, ...] = ()  # empty () -- all time
-
-    def __str__(self) -> str:
-        return format_index_name(self.prefix, self.recordtype, self.timeparts)
 
 
 def timerange_parts(start: tuple[int, ...], end: tuple[int, ...]) -> tuple[int, ...]:
@@ -158,8 +138,10 @@ def _parse_timename(given_timename: str) -> Iterator[int]:
     [7766, 555, 4]
     >>> list(_parse_timename('7766_555'))
     [7766, 555]
+    >>> list(_parse_timename('7766_555_'))
+    [7766, 555]
     """
-    for _part in given_timename.split(_DELIMITER):
+    for _part in given_timename.rstrip("*").rstrip(_DELIMITER).split(_DELIMITER):
         yield int(_part)
 
 
@@ -198,9 +180,9 @@ def timename_from_date(given_date: datetime.date, part_count: int) -> str:
 def timeparts_from_date(given_date: datetime.date, part_count: int) -> tuple[str, ...]:
     """
     >>> timeparts_from_date(datetime.date(3456, 7, 8), 2)
-    ('3456', '07')
+    (3456, 7)
     >>> timeparts_from_date(datetime.date(3456, 7, 8), 4)
-    ('3456', '07', '08', '00')
+    (3456, 7, 8, 0)
     """
     _parts = itertools.chain(_each_timepart_from_date(given_date), itertools.repeat(0))
     return tuple(itertools.islice(_parts, part_count))

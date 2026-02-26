@@ -49,4 +49,4 @@ class ThingHappeningsReport(djelme.CyclicReport):
         using = "elastic8reports"
 
     class Meta:
-        timeseries_name_prefix = "iv"
+        timeseries_name_prefix = "blarg"

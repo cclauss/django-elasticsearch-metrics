@@ -18,6 +18,10 @@ class ProtoTimeseriesImp(typing.Protocol):
         self,
     ) -> collections.abc.Iterable[type[ProtoTimeseriesRecord]]: ...
 
+    def each_timeseries_index_status(
+        self, *, recordtype: type | None = None
+    ) -> collections.abc.Iterable[str]: ...
+
     #
     def show_timeseries_indexes(self): ...
     def setup_timeseries_indexes(self) -> None: ...
@@ -27,12 +31,9 @@ class ProtoTimeseriesImp(typing.Protocol):
 
 
 class ProtoTimeseriesRecord(typing.Protocol):
-    @classmethod
-    def record(cls): ...
-
-    @classmethod
-    @property
-    def timeseries_template_name(cls) -> str: ...
+    ...
+    # @classmethod
+    # def record(cls): ...
 
 
 @typing.runtime_checkable

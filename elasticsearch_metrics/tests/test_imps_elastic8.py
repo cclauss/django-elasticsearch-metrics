@@ -6,9 +6,6 @@ from django.utils import timezone
 from elasticsearch8.dsl import (
     Keyword,
     ComposableIndexTemplate,
-    analyzer,
-    tokenizer,
-    connections,
     MetaField,
 )
 
@@ -38,6 +35,10 @@ class TestFormatIndexName(SimpleDjelmeTestCase):
         self.assertEqual(
             ThingHappened.format_timeseries_index_name(date),
             "dummy8app_happen_2020_02_",
+        )
+        self.assertEqual(
+            ThingHappeningsReport.format_timeseries_index_name(date),
+            "blarg_thinghappeningsreport_2020_02_",
         )
 
     def test_format_index_name_respects_date_format_setting(self):

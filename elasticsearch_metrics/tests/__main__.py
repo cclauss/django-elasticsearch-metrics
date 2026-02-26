@@ -5,7 +5,7 @@ a convenience for running with `python3 -m elasticsearch_metrics.tests`
 
 import argparse
 import os
-from subprocess import run
+import subprocess
 
 _DEVLOOP_DJANGOTEST_ARGS = ["--failfast", "--pdb"]
 
@@ -20,6 +20,7 @@ def run_tests(passthru_test_args=()):
     import django
     import django.core.management
 
+    _print_header("django-admin", "test", *passthru_test_args)
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE", "elasticsearch_metrics.tests.settings"
     )
@@ -31,9 +32,22 @@ def run_tests(passthru_test_args=()):
     # )
 
 
+def _print_header(*args):
+    _argstr = " ".join(args)
+    print()
+    print(_argstr)
+    print("#" * len(_argstr))
+    print()
+
+
+def _run(*args):
+    _print_header(*args)
+    subprocess.run(args, check=True)
+
+
 def run_lint():
-    run("poetry run flake8", check=True)
-    run("poetry run black --check", check=True)
+    _run("flake8")
+    _run("black", "--check", "--quiet", ".")
     # TODO: mypy?
 
 

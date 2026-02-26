@@ -66,7 +66,7 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
     def setup_djelme_imps(self):
         # TODO: prefix index names, avoid collisions across test runs
         # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_TIMESERIES_IMPS
-        #self.teardown_djelme_imps()  # in case any already exist
+        # self.teardown_djelme_imps()  # in case any already exist
         for _imp in djelme_registry.each_imp():
             _imp.setup_timeseries_indexes()
 

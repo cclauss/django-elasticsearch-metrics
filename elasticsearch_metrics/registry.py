@@ -136,15 +136,27 @@ class TimeseriesTypeRegistry:
                 ):
                     yield _recordtype
 
+    def each_imp_name(
+        self,
+        *,
+        imp_module_path: str = "",
+    ) -> collections.abc.Iterator[str]:
+        apps.check_apps_ready()  # ensure django setup done
+        for _imp_name, _imp_config in self.configured_imps.items():
+            if (not imp_module_path) or (imp_module_path in _imp_config):
+                yield _imp_name
+
     def each_imp(
         self,
         *,
         imp_module_path: str = "",
     ) -> collections.abc.Iterator[ProtoTimeseriesImp]:
         apps.check_apps_ready()  # ensure django setup done
-        for _imp_name, _imp_config in self.configured_imps.items():
-            if (not imp_module_path) or (imp_module_path in _imp_config):
-                yield self.get_imp(_imp_name)
+        for _imp_name in self.each_imp_name(imp_module_path=imp_module_path):
+            yield self.get_imp(_imp_name)
+
+    def each_imp_app_label(self) -> collections.abc.Iterable[str]:
+        return self.all_recordtypes.keys()
 
     ###
     # private methods
@@ -202,7 +214,7 @@ def _import_imp_module(imp_module_path: str) -> ProtoTimeseriesImpModule:
         _imp_module = importlib.import_module(imp_module_path)
     except ImportError as _error:
         raise ValueError(f"could not import {imp_module_path!r}") from _error
-    assert isinstance(_imp_module, ProtoTimeseriesImpModule)
+    # assert isinstance(_imp_module, ProtoTimeseriesImpModule)  # TODO: full imp
     return _imp_module
 
 

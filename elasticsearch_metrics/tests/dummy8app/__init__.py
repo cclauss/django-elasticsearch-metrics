@@ -1,1 +1,1 @@
-__all__ = ('apps', 'models', 'metrics')
+__all__ = ("apps", "models", "metrics")
