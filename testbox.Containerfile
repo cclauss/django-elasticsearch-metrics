@@ -1,4 +1,4 @@
-FROM python:3.10-slim as testbox
+FROM python:3.13-slim as testbox
 
 RUN pip install poetry==2.3.2
 

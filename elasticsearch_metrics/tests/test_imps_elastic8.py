@@ -54,14 +54,14 @@ class TestFormatIndexName(SimpleDjelmeTestCase):
 
 class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_get_index_template_returns_template_with_correct_name_and_pattern(self):
-        template = ThingHappened.timeseries_template
+        template = ThingHappened.get_timeseries_template()
         self.assertIsInstance(template, ComposableIndexTemplate)
         self.assertEqual(template._template_name, "dummy8app_happen__template")
         _template_dict = template.to_dict()
         self.assertEqual(_template_dict["index_patterns"], ["dummy8app_happen_*"])
 
     def test_get_index_template_respects_index_settings(self):
-        template = ThingHappened.timeseries_template
+        template = ThingHappened.get_timeseries_template()
         assert template._index.to_dict()["settings"] == {
             "refresh_interval": "-1",
             "analysis": {
@@ -81,7 +81,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
         }
 
     def test_get_index_template_creates_template_with_mapping(self):
-        template = ThingHappened.timeseries_template
+        template = ThingHappened.get_timeseries_template()
         mappings = template.to_dict()["template"]["mappings"]
         properties = mappings["properties"]
         assert "timestamp" in properties
@@ -91,15 +91,17 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     # regression test
     def test_mappings_are_not_shared(self):
-        template1 = Dummy8Event.timeseries_template.to_dict()
-        template2 = Dummy8EventWithExplicitNamePrefix.timeseries_template.to_dict()
+        template1 = Dummy8Event.get_timeseries_template().to_dict()
+        template2 = (
+            Dummy8EventWithExplicitNamePrefix.get_timeseries_template().to_dict()
+        )
         assert "intensity" in template1["template"]["mappings"]["properties"]
         assert "intenzity" not in template1["template"]["mappings"]["properties"]
         assert "intensity" not in template2["template"]["mappings"]["properties"]
         assert "intenzity" in template2["template"]["mappings"]["properties"]
 
     def test_get_index_template_default_template_name(self):
-        template = Dummy8Event.timeseries_template
+        template = Dummy8Event.get_timeseries_template()
         assert isinstance(template, ComposableIndexTemplate)
         assert template._template_name == "dummy8app_dummy8event__template"
         assert "dummy8app_dummy8event_*" in template.to_dict()["index_patterns"]
@@ -109,13 +111,13 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
             class Meta:
                 app_label = "myapp"
 
-        template = MyRecord.timeseries_template
+        template = MyRecord.get_timeseries_template()
         assert template._template_name == "myapp_myrecord__template"
 
     def test_template_name_defined_with_no_template_falls_back_to_default_template(
         self,
     ):
-        template = Dummy8EventWithExplicitNamePrefix.timeseries_template
+        template = Dummy8EventWithExplicitNamePrefix.get_timeseries_template()
         # prefix and recordtype specified in class Meta
         assert template._template_name == "dummy8evenz_eventlog__template"
         # template pattern generated using same options
@@ -135,7 +137,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
             class Meta:
                 app_label = "dummy8app"
 
-        template = ConcreteRecord.timeseries_template
+        template = ConcreteRecord.get_timeseries_template()
         assert template._template_name == "dummy8app_concreterecord__template"
         assert template._index.to_dict()["settings"] == {"number_of_shards": 2}
 
@@ -146,7 +148,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
                 timeseries_recordtype_name = "myrecord"
                 source = MetaField(enabled=True)
 
-        template = MyRecord.timeseries_template
+        template = MyRecord.get_timeseries_template()
         template_dict = template.to_dict()
         doc = template_dict["template"]["mappings"]
         assert doc["_source"]["enabled"] is True
@@ -171,7 +173,7 @@ class TestRecord(MockSaveTestCase):
 
 
 class TestSignals(MockSaveTestCase):
-    @unittest.mock.patch.object(ThingHappened, "timeseries_template")
+    @unittest.mock.patch.object(ThingHappened, "get_timeseries_template")
     def test_create_record_sends_signals(self, mock_timeseries_template):
         mock_pre_index_template_listener = unittest.mock.Mock()
         mock_post_index_template_listener = unittest.mock.Mock()
