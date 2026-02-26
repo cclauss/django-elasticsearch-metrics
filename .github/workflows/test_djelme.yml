@@ -37,6 +37,10 @@ jobs:
         image: elasticsearch:8.19.11
         ports:
           - 9208:9200
+        env:
+          xpack.security.enabled: false
+          node.name: singlenode
+          cluster.initial_master_nodes: singlenode
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
