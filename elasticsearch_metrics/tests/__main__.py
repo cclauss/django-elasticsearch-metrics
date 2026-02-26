@@ -1,4 +1,4 @@
-"""elasticsearch_metrics.tests.__main__: run the tests
+"""elasticsearch_metrics.tests.__main__: run all the tests
 
 a convenience for running with `python3 -m elasticsearch_metrics.tests`
 """
@@ -10,8 +10,8 @@ import subprocess
 _DEVLOOP_DJANGOTEST_ARGS = ["--failfast", "--pdb"]
 
 _parser = argparse.ArgumentParser()
-_parser.add_argument("--no-lint", action="store_true")  # _args.no_lint
-_parser.add_argument("--no-test", action="store_true")  # _args.no_test
+_parser.add_argument("--lint", action="store_true")  # _args.lint
+_parser.add_argument("--test", action="store_true")  # _args.test
 _parser.add_argument("-d", "--devloop", action="store_true")  # _args.devloop
 _parser.add_argument("passthru_test_args", nargs="*")
 
@@ -26,10 +26,7 @@ def run_tests(passthru_test_args=()):
     )
     django.setup()
     django.core.management.call_command("test", *passthru_test_args)
-    # run(
-    #     ["poetry", "run", "python", "manage.py", "test", *passthru_test_args],
-    #     check=True,
-    # )
+    # ? _run("poetry", "run", "python", "manage.py", "test", *passthru_test_args)
 
 
 def _print_header(*args):
@@ -53,11 +50,12 @@ def run_lint():
 
 if __name__ == "__main__":
     _args = _parser.parse_args()
+    _run_all = not any((_args.test, _args.lint))
 
-    if not _args.no_test:
+    if _run_all or _args.test:
         run_tests(_DEVLOOP_DJANGOTEST_ARGS if _args.devloop else ())
 
-    if not _args.no_lint:
+    if _run_all or _args.lint:
         run_lint()
 
     print("\n-- all done --")

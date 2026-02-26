@@ -8,14 +8,19 @@
 * Install django: `pip install django`
 * (Optional but recommended) Run elasticsearch: `docker-compose up`
 
-* Run tests using the following commands:
+* Run tests and checks:
 
 ```
 # Run all tests (requires elasticsearch to be running)
 python3 -m elasticsearch_metrics.tests
-
-# Check syntax
-flake8
+```
+```
+# Run only linting (not tests)
+python3 -m elasticsearch_metrics.tests --lint
+```
+```
+# Run only tests (not linting)
+python3 -m elasticsearch_metrics.tests --test
 ```
 
 * Run the shell with:
