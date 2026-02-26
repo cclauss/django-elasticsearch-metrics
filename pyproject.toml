@@ -64,7 +64,7 @@ dev = [
     { include-group = "tests" },
     { include-group = "lint" },
     "konch>=3.0.0",
-    "poetry>=2.0.0",
+    "poetry==2.3.2",  # matches testbox.Containerfile
 ]
 
 [tool.poetry]

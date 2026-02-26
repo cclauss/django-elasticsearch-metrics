@@ -17,10 +17,8 @@ jobs:
         id: setup-py
         with:
           python-version: '3.11'
-      - run: pip install -U tox
-      - name: alias pythonX.Y for tox
-        run: alias python${{ steps.setup-py.outputs.python-version }}=${{ steps.setup-py.outputs.python-path }}
-      - run: TOXENV=lint tox
+      - run: pip install .[lint]
+      - run: python -m elasticsearch_metrics.tests --lint
 
 
   test:

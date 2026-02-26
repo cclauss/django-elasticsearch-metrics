@@ -2097,4 +2097,4 @@ elastic8 = ["elasticsearch8"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4"
-content-hash = "c4ad1c219faa76cf630d0f11222b56a961f0a8532b4f4bfbf7d41732ddc26eab"
+content-hash = "e8a2e02a9c1f757f8ffca99e9c8e375bb31725e79243a191fbccd2295d00a536"
