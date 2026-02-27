@@ -20,6 +20,7 @@ import collections
 import dataclasses
 import datetime
 import logging
+import typing
 
 from django.utils import timezone
 from elasticsearch8.exceptions import NotFoundError
@@ -29,6 +30,7 @@ from elasticsearch8.dsl import (
     connections,
     ComposableIndexTemplate,
     mapped_field,
+    Keyword,
 )
 from elasticsearch8.dsl._sync.document import IndexMeta
 
@@ -37,6 +39,7 @@ from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.protocols import ProtoTimeseriesImp
 from elasticsearch_metrics.util import timeseries_naming
+from elasticsearch_metrics.util.anon_enough import opaque_key
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +111,9 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
     'elasticsearch_metrics'
     """
 
+    UNIQUE_TOGETHER_FIELDS: typing.ClassVar[collections.abc.Iterable[str]] = ()
+    unique_id: str = Keyword()
+
     class Meta:
         abstract = True
 
@@ -127,7 +133,7 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
         to the first configured imp that uses this imp module
         """
         _imp = None
-        if using is None:
+        if using in (None, "default"):
             _each_imp = djelme_registry.each_imp(imp_module_path=__name__)
             _imp = next(_each_imp, None)
         elif isinstance(using, str) and (using in djelme_registry.configured_imps):
@@ -136,6 +142,46 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
             assert isinstance(_imp, DjelmeElastic8Imp)
             return _imp._elastic8dsl_connection_name
         return super()._get_using(using)
+
+    def save(self, *, using=None, index=None, **kwargs):
+        """save the record
+
+        overrides `save` to populate document_id and send pre_save/post_save signals
+        """
+        self._populate_unique_id()
+        signals.pre_save.send(self.__class__, instance=self, using=using, index=index)
+        _saved = super().save(using=using, index=index, **kwargs)
+        signals.post_save.send(self.__class__, instance=self, using=using, index=index)
+        return _saved
+
+    def _populate_unique_id(self) -> None:
+        _unique_id = self._get_unique_id()
+        assert _unique_id or not self.UNIQUE_TOGETHER_FIELDS
+        if self.unique_id and (self.unique_id != _unique_id):
+            raise RuntimeError("unique_id set to a wrong value! prefer not setting it")
+        self.unique_id = _unique_id
+        if _unique_id and not self.meta.id:
+            self.meta.id = _unique_id  # set doc id, but don't error if it's already set
+
+    def _get_unique_id(self) -> str:
+        """
+        Get a unique document id by hashing values of "unique together"
+        fields for "ON CONFLICT UPDATE" behavior -- if the document
+        already exists, it will be replaced rather than duplicated.
+        Cannot detect/avoid conflicts this way, but that's ok.
+        """
+        _key_values = []
+        for _field_name in self.UNIQUE_TOGETHER_FIELDS:
+            _field_value = getattr(self, _field_name)
+            if not _field_value or (
+                isinstance(_field_value, collections.abc.Iterable)
+                and not isinstance(_field_value, str)
+            ):
+                raise ValueError(
+                    f"expected non-empty str-able value in field {_field_name!r}; got {_field_value!r}"
+                )
+            _key_values.append(_field_value)
+        return opaque_key(_key_values) if _key_values else ""
 
 
 class TimeseriesRecord(DjelmeRecord):
@@ -218,18 +264,16 @@ class TimeseriesRecord(DjelmeRecord):
         assert self.timestamp is not None
         return self.format_timeseries_index_name(self.timestamp)
 
-    def save(self, using=None, index=None, **kwargs):
+    def save(self, *, index=None, **kwargs):
         """save the record
 
-        overrides `Document.save` to choose a timeseries index based on `self.timestamp`
+        overrides `save` to choose a timeseries index based on `self.timestamp`
         """
         if self.timestamp is None:
             self.timestamp = timezone.now()  # HACK: why default_factory no work?
         if index is None:
             index = self.timeseries_index_name
-        signals.pre_save.send(self.__class__, instance=self, using=using, index=index)
-        ret = super().save(using=using, index=index, **kwargs)
-        signals.post_save.send(self.__class__, instance=self, using=using, index=index)
+        ret = super().save(index=index, **kwargs)
         return ret
 
     @classmethod

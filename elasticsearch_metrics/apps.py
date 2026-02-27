@@ -8,6 +8,7 @@ from elasticsearch_metrics.registry import djelme_registry
 
 IMPS_SETTING = "DJELMETRICS_TIMESERIES_IMPS"
 AUTOSYNC_SETTING = "DJELMETRICS_AUTOSYNC"
+AUTOSYNC_DEFAULT = True
 
 
 class ElasticsearchMetricsConfig(AppConfig):
@@ -28,12 +29,9 @@ class ElasticsearchMetricsConfig(AppConfig):
                 imps=[djelme_registry.get_imp(_name) for _name in _imp_names]
             )
         # autosync
-        if getattr(settings, AUTOSYNC_SETTING, False):
+        if getattr(settings, AUTOSYNC_SETTING, AUTOSYNC_DEFAULT):
             for _imp in djelme_registry.each_imp():
-                for _recordtype in djelme_registry.each_recordtype(
-                    imp_name=_imp.imp_name
-                ):
-                    _recordtype.setup_timeseries_indexes()
+                _imp.setup_timeseries_indexes()
 
 
 ###

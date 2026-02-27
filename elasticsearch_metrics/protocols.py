@@ -44,9 +44,11 @@ class ProtoTimeseriesImpModule(typing.Protocol):
         imp_name: str,
         imp_kwargs: dict[str, str],
         namespace_prefix: str = "",
-    ) -> ProtoTimeseriesImp: ...
+    ) -> ProtoTimeseriesImp:
+        """djelme_imp: impstantiate a djelme implementation"""
 
     @staticmethod
     def djelme_when_ready(
         imps: collections.abc.Iterable[ProtoTimeseriesImp],
-    ) -> None: ...
+    ) -> None:
+        """djelme_when_ready: recordtypes and djelme config loaded -- here's one of each imp"""

@@ -314,8 +314,8 @@ class DjelmeElastic6Imp:
         # assumes `connections.configure` was already called
         return connections.get_connection(self.imp_name)
 
-    def setup_timeseries_indexes(self) -> None:
-        for _metric_type in self._each_metric_type():
+    def setup_timeseries_indexes(self, recordtypes=()) -> None:
+        for _metric_type in recordtypes or self._each_metric_type():
             logger.info("setting up %r", _metric_type)
             _metric_type.sync_index_template(using=self.elastic6_client)
 
