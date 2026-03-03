@@ -1,16 +1,17 @@
 from __future__ import annotations
 import collections
+import types
 import typing
 
 __all__ = (
-    "ProtoTimeseriesImp",
-    "ProtoTimeseriesImpModule",
+    "ProtoDjelmeBackend",
+    "ProtoDjelmeImp",
 )
 
 
-class ProtoTimeseriesImp(typing.Protocol):
+class ProtoDjelmeBackend(typing.Protocol):
     @property
-    def imp_name(self) -> str: ...
+    def backend_name(self) -> str: ...
     @property
     def imp_kwargs(self) -> dict[str, str]: ...
 
@@ -37,18 +38,17 @@ class ProtoTimeseriesRecord(typing.Protocol):
     def each_timeseries_index_status(cls) -> collections.abc.Iterable[str]: ...
 
 
-@typing.runtime_checkable
-class ProtoTimeseriesImpModule(typing.Protocol):
+class ProtoDjelmeImp(types.Module, typing.Protocol):
     @staticmethod
-    def djelme_imp(
-        imp_name: str,
+    def djelme_backend(
+        backend_name: str,
         imp_kwargs: dict[str, str],
         namespace_prefix: str = "",
-    ) -> ProtoTimeseriesImp:
-        """djelme_imp: impstantiate a djelme implementation"""
+    ) -> ProtoDjelmeBackend:
+        """djelme_backend: impstantiate a djelme backend"""
 
     @staticmethod
     def djelme_when_ready(
-        imps: collections.abc.Iterable[ProtoTimeseriesImp],
+        backends: collections.abc.Iterable[ProtoDjelmeBackend],
     ) -> None:
-        """djelme_when_ready: recordtypes and djelme config loaded -- here's one of each imp"""
+        """djelme_when_ready: recordtypes and djelme config loaded -- here's one of each backend"""

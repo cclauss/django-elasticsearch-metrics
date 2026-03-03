@@ -255,7 +255,7 @@ class TestSignals(MockSaveTestCase):
 class TestIntegration(RealElasticTestCase):
     @property
     def es6_client(self):
-        return connections.get_connection("elastic6imp")
+        return connections.get_connection("my_elastic6")
 
     def test_create_document(self):
         provider_id = "12345"
@@ -281,7 +281,7 @@ class TestIntegration(RealElasticTestCase):
 class TestIntegrationSetup(RealElasticTestCase, auto_setup_imps=False):
     @property
     def es6_client(self):
-        return connections.get_connection("elastic6imp")
+        return connections.get_connection("my_elastic6")
 
     def test_init(self):
         PreprintView.init()

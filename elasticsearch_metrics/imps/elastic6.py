@@ -19,7 +19,7 @@ from elasticsearch6_dsl.index import Index
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
-from elasticsearch_metrics.protocols import ProtoTimeseriesImp
+from elasticsearch_metrics.protocols import ProtoDjelmeBackend
 from elasticsearch_metrics.registry import djelme_registry
 
 DEFAULT_DATE_FORMAT = "%Y.%m.%d"
@@ -45,8 +45,8 @@ class ReadonlyAttrMap:
 
 def _get_default_using():
     """get the elasticsearch-dsl connection name to use"""
-    _each_imp_name = djelme_registry.each_imp_name(imp_module_path=__name__)
-    return next(_each_imp_name)
+    _each_backend_name = djelme_registry.each_backend_name(imp_module_path=__name__)
+    return next(_each_backend_name)
 
 
 class MetricMeta(IndexMeta):
@@ -291,19 +291,19 @@ class Metric(Document, BaseMetric):
         getting connection name from a djelme imp and default
         to the first configured imp that uses this imp module
         """
-        _imp = None
+        _backend = None
         if using in (None, "default"):
             return _get_default_using()
-        elif isinstance(using, str) and (using in djelme_registry.configured_imps):
-            _imp = djelme_registry.get_imp(using)
-            assert isinstance(_imp, DjelmeElastic6Imp)
-            return _imp.imp_name
+        elif isinstance(using, str) and (using in djelme_registry.all_backends):
+            _backend = djelme_registry.get_backend(using)
+            assert isinstance(_backend, DjelmeElastic6Backend)
+            return _backend.imp_name
         return super()._get_using(using)
 
 
 @dataclasses.dataclass
-class DjelmeElastic6Imp:
-    """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)"""
+class DjelmeElastic6Backend:
+    """DjelmeElastic6Backend: the elastic6 implementation of djelme (for use by generic djelme code)"""
 
     imp_name: str
     imp_kwargs: dict[str, str]
@@ -336,10 +336,12 @@ class DjelmeElastic6Imp:
             yield _metric
 
 
-djelme_imp = DjelmeElastic6Imp  # for ProtoTimeseriesImpModule
+djelme_backend = DjelmeElastic6Backend  # for ProtoDjelmeImp
 
 
-def djelme_when_ready(  # for ProtoTimeseriesImpModule
-    imps: Iterator[ProtoTimeseriesImp],
+def djelme_when_ready(  # for ProtoDjelmeImp
+    backends: Iterator[ProtoDjelmeBackend],
 ) -> None:
-    connections.configure(**{_imp.imp_name: _imp.imp_kwargs for _imp in imps})
+    connections.configure(
+        **{_backend.backend_name: _backend.backend_kwargs for _backend in backends}
+    )

@@ -1,4 +1,4 @@
-"""elasticsearch_metrics.util.timeseries_index_naming
+"""elasticsearch_metrics.util.timeseries_naming
 
 for naming timeseries indexes with lexical time coverage
 (so an index-name wildcard can be used to query several indexes)

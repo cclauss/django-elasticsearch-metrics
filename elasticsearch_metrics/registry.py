@@ -1,14 +1,13 @@
 import collections
 import dataclasses
-import functools
 import importlib
 
 from django.apps import apps
 
 from elasticsearch_metrics.protocols import (
-    ProtoTimeseriesImp,
+    ProtoDjelmeBackend,
     ProtoTimeseriesRecord,
-    ProtoTimeseriesImpModule,
+    ProtoDjelmeImp,
 )
 
 
@@ -26,9 +25,9 @@ class TimeseriesTypeRegistry:
         default_factory=lambda: collections.defaultdict(dict),
     )
 
-    # nested mapping of imp_name => imp_module_path => imp config dictionary
-    # (note, only one imp module allowed per module (for now))
-    configured_imps: dict[str, tuple[str, dict[str, str]]] = dataclasses.field(
+    # nested mapping of backend_name => imp_module_path => imp config dictionary
+    # (note, only one imp module allowed per backend (for now))
+    all_backends: dict[str, tuple[str, dict[str, str]]] = dataclasses.field(
         default_factory=dict,
     )
 
@@ -54,12 +53,12 @@ class TimeseriesTypeRegistry:
             )
         app_recordtypes[recordtype_name] = record_cls
 
-    def register_imp(
-        self, imp_name: str, imp_module_path: str, imp_kwargs: dict[str, str]
+    def register_backend(
+        self, backend_name: str, imp_module_path: str, imp_kwargs: dict[str, str]
     ) -> None:
-        if imp_name in self.configured_imps:
-            raise RuntimeError(f"duplicate imps named {imp_name!r}")
-        self.configured_imps[imp_name] = {imp_module_path: imp_kwargs}
+        if backend_name in self.all_backends:
+            raise RuntimeError(f"duplicate imps named {backend_name!r}")
+        self.all_backends[backend_name] = {imp_module_path: imp_kwargs}
 
     ###
     # `get` methods: for accessing specific items in the registry
@@ -103,17 +102,17 @@ class TimeseriesTypeRegistry:
             breakpoint()
         return _res
 
-    def get_imp(self, imp_name: str, namespace_prefix: str = "") -> ProtoTimeseriesImp:
-        _imp_module, _imp_kwargs = self._lookup_imp_module(imp_name)
-        return _imp_module.djelme_imp(imp_name, _imp_kwargs, namespace_prefix)
+    def get_backend(self, backend_name: str, namespace_prefix: str = "") -> ProtoDjelmeBackend:
+        _imp_module, _imp_kwargs = self._lookup_imp_module(backend_name)
+        return _imp_module.djelme_backend(backend_name, _imp_kwargs, namespace_prefix)
 
     def get_imp_module(
-        self, imp_module_path: str = "", *, imp_name: str = ""
-    ) -> ProtoTimeseriesImpModule:
+        self, imp_module_path: str = "", *, backend_name: str = ""
+    ) -> ProtoDjelmeImp:
         _to_import = imp_module_path
-        if imp_name:
+        if backend_name:
             assert not imp_module_path  # one or the other
-            _registered_module_path, _ = self._lookup_imp(imp_name)
+            _registered_module_path, _ = self._lookup_backend(backend_name)
             _to_import = _registered_module_path
         return _import_imp_module(_to_import)
 
@@ -123,11 +122,11 @@ class TimeseriesTypeRegistry:
     def each_recordtype(
         self,
         app_label: str = "",
-        imp_name: str = "",
+        backend_name: str = "",
     ) -> collections.abc.Iterator[type]:
-        """Iterate registered metric classes, optionally filtered on an app_label and/or imp_name."""
+        """Iterate registered metric classes, optionally filtered on an app_label and/or backend_name."""
         apps.check_apps_ready()  # ensure django setup done
-        _imp_module = self.get_imp_module(imp_name=imp_name) if imp_name else None
+        _imp_module = self.get_imp_module(backend_name=backend_name) if backend_name else None
         app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for app_label in app_labels:
             for _recordtype in self._get_recordtypes_for_app(app_label).values():
@@ -136,44 +135,44 @@ class TimeseriesTypeRegistry:
                 ):
                     yield _recordtype
 
-    def each_imp_name(
+    def each_backend_name(
         self,
         *,
         imp_module_path: str = "",
     ) -> collections.abc.Iterator[str]:
         apps.check_apps_ready()  # ensure django setup done
-        for _imp_name, _imp_config in self.configured_imps.items():
+        for _imp_name, _imp_config in self.all_backends.items():
             if (not imp_module_path) or (imp_module_path in _imp_config):
                 yield _imp_name
 
-    def each_imp(
+    def each_backend(
         self,
         *,
         imp_module_path: str = "",
-    ) -> collections.abc.Iterator[ProtoTimeseriesImp]:
+    ) -> collections.abc.Iterator[ProtoDjelmeBackend]:
         apps.check_apps_ready()  # ensure django setup done
-        for _imp_name in self.each_imp_name(imp_module_path=imp_module_path):
-            yield self.get_imp(_imp_name)
+        for _backend_name in self.each_backend_name(imp_module_path=imp_module_path):
+            yield self.get_backend(_backend_name)
 
-    def each_imp_app_label(self) -> collections.abc.Iterable[str]:
+    def each_app_label(self) -> collections.abc.Iterable[str]:
         return self.all_recordtypes.keys()
 
     ###
     # private methods
 
-    def _lookup_imp(self, imp_name: str) -> tuple[str, dict[str, str]]:
+    def _lookup_backend(self, backend_name: str) -> tuple[str, dict[str, str]]:
         try:
-            _imp_config = self.configured_imps[imp_name]
+            _backend_settings = self.all_backends[backend_name]
         except KeyError as _e:
-            raise LookupError(f"unknown imp {imp_name!r}") from _e
-        assert len(_imp_config) == 1
-        ((_imp_module_path, _imp_kwargs),) = _imp_config.items()
+            raise LookupError(f"unknown imp {backend_name!r}") from _e
+        assert len(_backend_settings) == 1
+        ((_imp_module_path, _imp_kwargs),) = _backend_settings.items()
         return (_imp_module_path, _imp_kwargs)
 
     def _lookup_imp_module(
-        self, imp_name: str
-    ) -> tuple[ProtoTimeseriesImpModule, dict[str, str]]:
-        _imp_module_path, _imp_kwargs = self._lookup_imp(imp_name)
+        self, backend_name: str
+    ) -> tuple[ProtoDjelmeImp, dict[str, str]]:
+        _imp_module_path, _imp_kwargs = self._lookup_backend(backend_name)
         return (_import_imp_module(_imp_module_path), _imp_kwargs)
 
     def _get_recordtypes_for_app(self, app_label: str) -> dict[str, type]:
@@ -208,13 +207,11 @@ class TimeseriesTypeRegistry:
         return _app_config.label
 
 
-@functools.lru_cache
-def _import_imp_module(imp_module_path: str) -> ProtoTimeseriesImpModule:
+def _import_imp_module(imp_module_path: str) -> ProtoDjelmeImp:
     try:
         _imp_module = importlib.import_module(imp_module_path)
     except ImportError as _error:
         raise ValueError(f"could not import {imp_module_path!r}") from _error
-    assert isinstance(_imp_module, ProtoTimeseriesImpModule)
     return _imp_module
 
 

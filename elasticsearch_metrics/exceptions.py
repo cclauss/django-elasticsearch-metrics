@@ -3,7 +3,7 @@ class DjelmeError(Exception):
 
 
 class TimeseriesSetupError(DjelmeError):
-    """for errors that might be solved by `djelme_setup`"""
+    """for errors that might be solved by `djelme_backend_setup`"""
 
 
 class IndexTemplateNotFoundError(TimeseriesSetupError):

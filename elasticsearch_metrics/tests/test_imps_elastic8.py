@@ -219,7 +219,7 @@ class TestSignals(MockSaveTestCase):
 class TestCreateDocument(RealElasticTestCase):
     @property
     def es8_client(self):
-        return djelme_registry.get_imp("elastic8events").elastic8_client
+        return djelme_registry.get_backend("my_elastic8_events").elastic8_client
 
     def test_create_document(self):
         _thing_id = "12345"
@@ -246,7 +246,7 @@ class TestCreateDocument(RealElasticTestCase):
 class TestInit(RealElasticTestCase, auto_setup_imps=False):
     @property
     def es8_client(self):
-        return djelme_registry.get_imp("elastic8events").elastic8_client
+        return djelme_registry.get_backend("my_elastic8_events").elastic8_client
 
     def test_init(self):
         ThingHappened.init()

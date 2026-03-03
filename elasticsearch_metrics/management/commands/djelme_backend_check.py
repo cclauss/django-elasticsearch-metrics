@@ -26,7 +26,7 @@ class Command(BaseCommand):
                 )
             app_labels = [options["app_label"]]
         else:
-            app_labels = list(registry.each_imp_app_label())
+            app_labels = list(registry.each_app_label())
 
         out_of_sync_count = 0
         self.stdout.write("Checking for outdated index templates...")
@@ -46,7 +46,7 @@ class Command(BaseCommand):
                 "{} index template(s) not set up.".format(out_of_sync_count),
                 style.ERROR,
             )
-            cmd = colorize("python manage.py djelme_setup", opts=("bold",))
+            cmd = colorize("python manage.py djelme_backend_setup", opts=("bold",))
             self.stdout.write("Run {cmd} to set up index templates.".format(cmd=cmd))
             sys.exit(1)
         else:

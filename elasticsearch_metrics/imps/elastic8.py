@@ -1,7 +1,7 @@
 """elasticsearch_metrics.elastic8: store events and reports in elasticsearch 8
 
->>> from elasticsearch_metrics.imps.elastic8 import EventLog
->>> class TheThingHappened(EventLog):
+>>> from elasticsearch_metrics.imps.elastic8 import EventRecord
+>>> class TheThingHappened(EventRecord):
 ...     intensity: int
 ...
 ...     class Index:  # elasticsearch index settings
@@ -13,8 +13,8 @@
 
 __all__ = (
     "TimeseriesRecord",
-    "EventLog",
-    "CyclicReport",
+    "EventRecord",
+    "CyclicRecord",
 )
 import collections
 import dataclasses
@@ -37,14 +37,14 @@ from elasticsearch8.dsl._sync.document import IndexMeta
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import djelme_registry
-from elasticsearch_metrics.protocols import ProtoTimeseriesImp
+from elasticsearch_metrics.protocols import ProtoDjelmeBackend
 from elasticsearch_metrics.util import timeseries_naming
 from elasticsearch_metrics.util.anon_enough import opaque_key
 
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_TIMEPATTERN_DEPTH = 2  # xxxx_xx
+_DEFAULT_TIMEPATTERN_DEPTH = 3  # xxxx_xx_xx
 
 
 class _DjelmeRecordMeta(IndexMeta):
@@ -129,18 +129,18 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
         """get the elasticsearch8 connection name to use
 
         overrides elasticsearch8.Document._get_using to allow
-        getting connection name from a djelme imp and default
-        to the first configured imp that uses this imp module
+        getting connection name from a djelme backend and default
+        to the first configured backend that uses this imp module
         """
-        _imp = None
+        _backend = None
         if using in (None, "default"):
-            _each_imp = djelme_registry.each_imp(imp_module_path=__name__)
-            _imp = next(_each_imp, None)
-        elif isinstance(using, str) and (using in djelme_registry.configured_imps):
-            _imp = djelme_registry.get_imp(using)
-        if _imp is not None:
-            assert isinstance(_imp, DjelmeElastic8Imp)
-            return _imp._elastic8dsl_connection_name
+            _each_backend = djelme_registry.each_backend(imp_module_path=__name__)
+            _backend = next(_each_backend, None)
+        elif isinstance(using, str) and (using in djelme_registry.all_backends):
+            _backend = djelme_registry.get_backend(using)
+        if _backend is not None:
+            assert isinstance(_backend, DjelmeElastic8Backend)
+            return _backend._elastic8dsl_connection_name
         return super()._get_using(using)
 
     def save(self, *, using=None, index=None, **kwargs):
@@ -348,14 +348,14 @@ class TimeseriesRecord(DjelmeRecord):
             return True
 
 
-class EventLog(TimeseriesRecord):
-    # TODO: EventLog expiration
+class EventRecord(TimeseriesRecord):
+    # TODO: EventRecord expiration
 
     class Meta:
         abstract = True
 
 
-class CyclicReport(TimeseriesRecord):
+class CyclicRecord(TimeseriesRecord):
     covers_from: datetime.date
     covers_before: datetime.date
 
@@ -364,10 +364,10 @@ class CyclicReport(TimeseriesRecord):
 
 
 @dataclasses.dataclass
-class DjelmeElastic8Imp:
-    """DjelmeElastic8Imp: the elastic8 implementation of djelme (for use by generic djelme code)"""
+class DjelmeElastic8Backend:
+    """DjelmeElastic8Backend: elastic8 backend for djelme (for use by generic djelme code)"""
 
-    imp_name: str
+    backend_name: str
     imp_kwargs: dict[str, str]  # pass-thru to elasticsearch connection kwargs
     namespace_prefix: str = ""
 
@@ -378,7 +378,7 @@ class DjelmeElastic8Imp:
 
     @property
     def _elastic8dsl_connection_name(self) -> str:
-        return self.imp_name
+        return self.backend_name
 
     @property
     def _elastic8dsl_connection_kwargs(self) -> dict:
@@ -404,21 +404,24 @@ class DjelmeElastic8Imp:
                 pass
 
     def _each_recordtype(self) -> collections.abc.Iterator[type[DjelmeRecord]]:
-        for _type in djelme_registry.each_recordtype(imp_name=self.imp_name):
+        for _type in djelme_registry.each_recordtype(backend_name=self.backend_name):
             assert issubclass(_type, DjelmeRecord)
             yield _type
 
 
-djelme_imp = DjelmeElastic8Imp  # for ProtoTimeseriesImpModule
+###
+# names expected by ProtoDjelmeImp
+
+djelme_backend = DjelmeElastic8Backend  # for ProtoDjelmeImp
 
 
-def djelme_when_ready(  # for ProtoTimeseriesImpModule
-    imps: collections.abc.Iterable[ProtoTimeseriesImp],
+def djelme_when_ready(  # for ProtoDjelmeImp
+    backends: collections.abc.Iterable[ProtoDjelmeBackend],
 ) -> None:
-    assert all(isinstance(_imp, DjelmeElastic8Imp) for _imp in imps)
+    assert all(isinstance(_backend, DjelmeElastic8Backend) for _backend in backends)
     connections.configure(
         **{
-            _imp._elastic8dsl_connection_name: _imp._elastic8dsl_connection_kwargs
-            for _imp in imps
+            _backend._elastic8dsl_connection_name: _backend._elastic8dsl_connection_kwargs
+            for _backend in backends
         }
     )

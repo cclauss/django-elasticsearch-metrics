@@ -65,14 +65,14 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     def setup_djelme_imps(self):
         # TODO: prefix index names, avoid collisions across test runs
-        # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_TIMESERIES_IMPS
+        # get settings from elasticsearch_metrics.tests.settings.DJELME_BACKENDS
         # self.teardown_djelme_imps()  # in case any already exist
-        for _imp in djelme_registry.each_imp():
-            _imp.setup_timeseries_indexes()
+        for _backend in djelme_registry.each_backend():
+            _backend.setup_timeseries_indexes()
 
     def teardown_djelme_imps(self):
-        for _imp in djelme_registry.each_imp():
-            _imp.teardown_timeseries_indexes()
+        for _backend in djelme_registry.each_backend():
+            _backend.teardown_timeseries_indexes()
 
 
 class MockSaveTestCase(SimpleDjelmeTestCase):
