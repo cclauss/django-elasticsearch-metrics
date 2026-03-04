@@ -4,11 +4,10 @@ a convenience for running with `python3 -m elasticsearch_metrics.tests`
 """
 
 import argparse
-import coverage
 import os
 import subprocess
 
-_DEVLOOP_DJANGOTEST_ARGS = ["--failfast", "--pdb"]
+_DEVLOOP_DJANGOTEST_ARGS = ("--failfast", "--pdb")
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--lint", action="store_true")  # _args.lint
@@ -18,20 +17,20 @@ _parser.add_argument("-c", "--coverage", action="store_true")  # _args.coverage
 _parser.add_argument("passthru_test_args", nargs="*")
 
 
-def run_tests(passthru_test_args=()):
-    import django
-    import django.core.management
-
+def run_tests(passthru_test_args: tuple[str, ...] = (), coverage: bool = False) -> None:
     print_header("tests")
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE", "elasticsearch_metrics.tests.settings"
     )
-    django.setup()
-    django.core.management.call_command("test", *passthru_test_args)
-    # ? _run("poetry", "run", "python", "manage.py", "test", *passthru_test_args)
+    _argstart = (
+        ("poetry", "run", "coverage", "run")
+        if coverage
+        else ("poetry", "run", "python")
+    )
+    _run(*_argstart, "manage.py", "test", *passthru_test_args)
 
 
-def print_header(*args):
+def print_header(*args: str) -> None:
     _argstr = " ".join(args)
     print()
     print(_argstr)
@@ -39,14 +38,13 @@ def print_header(*args):
     print()
 
 
-def _run(*args):
+def _run(*args: str, header: str = "") -> None:
+    print_header(header) if header else print_header(*args)
     subprocess.run(args, check=True)  # stop on error
 
 
-def run_lint():
-    print_header("flake8")
+def run_lint() -> None:
     _run("poetry", "run", "flake8")
-    print_header("black")
     _run("poetry", "run", "black", "--check", ".")
     # TODO: mypy?
 
@@ -56,21 +54,24 @@ if __name__ == "__main__":
     _run_all = not any((_args.test, _args.lint))
 
     if _run_all or _args.test:
-        if _args.coverage:
-            _cov = coverage.Coverage()
-            _cov.start()
-        run_tests(_DEVLOOP_DJANGOTEST_ARGS if _args.devloop else ())
-        if _args.coverage:
-            _cov.stop()
-            _cov.save()
-            print_header("uncoverage")
-            _cov.report(
-                skip_covered=True,
-                sort="cover",
-                omit=["elasticsearch_metrics/tests/__main__.py"],
-            )
+        run_tests(
+            passthru_test_args=(_DEVLOOP_DJANGOTEST_ARGS if _args.devloop else ()),
+            coverage=_args.coverage,
+        )
 
     if _run_all or _args.lint:
         run_lint()
 
-    print("\n-- all done --")
+    if _args.coverage:
+        _run(
+            "poetry",
+            "run",
+            "coverage",
+            "report",
+            "--skip-covered",
+            "--sort=-miss",
+            "--omit=elasticsearch_metrics/tests/__main__.py",
+            header="uncovered code",
+        )
+
+    print("\n\n== all done ==")

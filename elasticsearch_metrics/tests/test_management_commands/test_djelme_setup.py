@@ -2,7 +2,7 @@ from unittest import mock, skip
 
 from elasticsearch_metrics.management.commands import djelme_backend_setup
 from elasticsearch_metrics.imps import elastic6
-from elasticsearch_metrics.registry import registry
+from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.tests._test_util import SimpleDjelmeTestCase
 
 
@@ -25,7 +25,7 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
             self.mock6_sync_index_template.call_count
             + self.mock8_sync_index_template.call_count
         )
-        assert _call_count == len(list(registry.each_recordtype()))
+        assert _call_count == len(list(djelme_registry.each_recordtype()))
         assert "Synchronized recordtypes." in out
 
     def test_with_invalid_app(self):

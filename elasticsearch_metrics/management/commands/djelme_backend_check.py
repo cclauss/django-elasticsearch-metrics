@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from django.utils.termcolors import colorize
 
-from elasticsearch_metrics.registry import registry
+from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.management.color import color_style
 
@@ -20,18 +20,18 @@ class Command(BaseCommand):
         logging.getLogger("elasticsearch").setLevel(logging.CRITICAL)
         style = color_style()
         if options["app_label"]:
-            if options["app_label"] not in registry.all_recordtypes:
+            if options["app_label"] not in djelme_registry.all_recordtypes:
                 raise CommandError(
                     "No recordtypes found for app '{}'".format(options["app_label"])
                 )
             app_labels = [options["app_label"]]
         else:
-            app_labels = list(registry.each_app_label())
+            app_labels = list(djelme_registry.each_app_label())
 
         out_of_sync_count = 0
         self.stdout.write("Checking for outdated index templates...")
         for app_label in app_labels:
-            for _recordtype in registry.each_recordtype(app_label=app_label):
+            for _recordtype in djelme_registry.each_recordtype(app_label=app_label):
                 try:
                     _recordtype.check_index_template()
                 except (

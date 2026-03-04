@@ -1,6 +1,9 @@
 # Contributing
 (TODO: update)
 
+## Code conventions
+
+
 ## Setting up local devloop
 
 ### 0. get the code
@@ -26,10 +29,10 @@ pip install -e '.[dev,anydjango]'
 
 ### Run tests and checks
 
-these expect elasticsearches to be running and configured in `elasticsearch_metrics/tests/settings.py` (or set environment variables `ELASTICSEARCH6_URL` and `ELASTICSEARCH8_URL`)
+these expect elasticsearches to be running and configured in `elasticsearch_metrics/tests/settings.py` (or set environment variables `ELASTICSEARCH6_URL` and `ELASTICSEARCH8_URL`) -- see `using docker-style container tools`, below, for one way to do that
 
 running the python module `elasticsearch_metrics.tests` will run tests and linting checks
--- should always pass before merge to `main`
+-- should always pass before merging to `main`
 
 ```
 python -m elasticsearch_metrics.tests
