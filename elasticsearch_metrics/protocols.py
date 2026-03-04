@@ -1,6 +1,5 @@
 from __future__ import annotations
 import collections
-import types
 import typing
 
 __all__ = (
@@ -30,15 +29,14 @@ class ProtoDjelmeBackend(typing.Protocol):
 
 
 class ProtoTimeseriesRecord(typing.Protocol):
-    ...
-    # @classmethod
-    # def record(cls): ...
+    @classmethod
+    def record(cls, **kwargs): ...
 
     @classmethod
     def each_timeseries_index_status(cls) -> collections.abc.Iterable[str]: ...
 
 
-class ProtoDjelmeImp(types.Module, typing.Protocol):
+class ProtoDjelmeImp(typing.Protocol):
     @staticmethod
     def djelme_backend(
         backend_name: str,

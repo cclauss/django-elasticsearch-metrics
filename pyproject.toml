@@ -54,6 +54,7 @@ build-backend = "poetry.core.masonry.api"
 tests = [
     "factory-boy==3.3.3",
     "tox>=4.0.0",
+    "coverage>=7.13.0",
 ]
 lint = [
     "flake8==7.3.0",
@@ -82,9 +83,33 @@ optional = true
 optional = true
 
 [tool.mypy]
+# start with an ideal: enable strict type-checking, then loosen in module-specific config
+# see https://mypy.readthedocs.io/en/stable/existing_code.html#introduce-stricter-options
 strict = true
+## BEGIN possible loosenings from `strict`:
+disallow_subclassing_any = false
+# warn_unused_configs = false
+# warn_redundant_casts = false
+# warn_unused_ignores = false
+# strict_equality = false
+# strict_concatenate = false
+# check_untyped_defs = false
+# disallow_untyped_decorators = false
+# disallow_any_generics = false
+disallow_untyped_calls = false
+# disallow_incomplete_defs = false
+disallow_untyped_defs = false
+# no_implicit_reexport = false
+# warn_return_any = false
+## END loosenings of `strict`
 
-[[tool.mypy.overrides]]
-module = 'elasticsearch_metrics.tests.*'
-allow_untyped_calls = true
-allow_untyped_defs = true
+# prefer types that can be understood by reading code in only one place
+local_partial_types = true
+# avoid easily-avoidable dead code
+warn_unreachable = true
+# prefer direct imports
+implicit_reexport = false
+
+# got untyped dependencies -- this is fine
+ignore_missing_imports = true
+disable_error_code = "import-untyped,import-not-found"

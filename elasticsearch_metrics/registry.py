@@ -9,25 +9,32 @@ from elasticsearch_metrics.protocols import (
     ProtoTimeseriesRecord,
     ProtoDjelmeImp,
 )
+from elasticsearch_metrics.util.django import find_app_label_for_type
+
+__all__ = ("djelme_registry",)
 
 
 @dataclasses.dataclass
-class TimeseriesTypeRegistry:
-    """TimeseriesTypeRegistry keeping track of TimeseriesRecord classes (similar to how
+class _DjelmeRegistry:
+    """_DjelmeRegistry keeps track of configured backends and record types (similar to how
     django.apps.registry.Apps keeps track of Model classes).
 
-    Every time a TimeseriesRecord subtype is defined, TimeseriesRecord.__init_subclass__
-    calls djelme_registry.register which creates an entry in all_recordtypes.
+    Meant to be treated as a singleton -- use the instance at `djelme_registry`.
+
+    Imps should call `djelme_registry.register_recordtype` whenever a non-abstract
+    record-type class is defined.
+
+    `djelme_registry.register_backend` should be called based on settings
     """
 
-    # nested mapping of app labels => record-type names => record classes
+    # nested mapping from app labels => record-type names => record classes
     all_recordtypes: dict[str, dict[str, type]] = dataclasses.field(
         default_factory=lambda: collections.defaultdict(dict),
     )
 
-    # nested mapping of backend_name => imp_module_path => imp config dictionary
+    # nested mapping from backend_name => imp_module_path => imp backend config dictionary
     # (note, only one imp module allowed per backend (for now))
-    all_backends: dict[str, tuple[str, dict[str, str]]] = dataclasses.field(
+    all_backends: dict[str, dict[str, dict[str, str]]] = dataclasses.field(
         default_factory=dict,
     )
 
@@ -35,12 +42,12 @@ class TimeseriesTypeRegistry:
     # `register` methods: for adding items to the registry
 
     def register_recordtype(
-        self, record_cls: type[ProtoTimeseriesRecord], *, app_label: str = ""
+        self, recordtype: type[ProtoTimeseriesRecord], *, app_label: str = ""
     ) -> None:
         """Add a record type to the registry."""
-        _app_label = app_label or self._find_app_label(record_cls)
+        _app_label = app_label or find_app_label_for_type(recordtype)
         app_recordtypes = self.all_recordtypes[_app_label]
-        recordtype_name = record_cls.__name__.lower()
+        recordtype_name = recordtype.__name__.lower()
         if recordtype_name in app_recordtypes:
             # Raise an error for conflicting metrics (same behavior as apps.register_model)
             raise RuntimeError(
@@ -48,10 +55,10 @@ class TimeseriesTypeRegistry:
                     recordtype_name,
                     _app_label,
                     app_recordtypes[recordtype_name],
-                    record_cls,
+                    recordtype,
                 )
             )
-        app_recordtypes[recordtype_name] = record_cls
+        app_recordtypes[recordtype_name] = recordtype
 
     def register_backend(
         self, backend_name: str, imp_module_path: str, imp_kwargs: dict[str, str]
@@ -102,7 +109,9 @@ class TimeseriesTypeRegistry:
             breakpoint()
         return _res
 
-    def get_backend(self, backend_name: str, namespace_prefix: str = "") -> ProtoDjelmeBackend:
+    def get_backend(
+        self, backend_name: str, namespace_prefix: str = ""
+    ) -> ProtoDjelmeBackend:
         _imp_module, _imp_kwargs = self._lookup_imp_module(backend_name)
         return _imp_module.djelme_backend(backend_name, _imp_kwargs, namespace_prefix)
 
@@ -126,7 +135,9 @@ class TimeseriesTypeRegistry:
     ) -> collections.abc.Iterator[type]:
         """Iterate registered metric classes, optionally filtered on an app_label and/or backend_name."""
         apps.check_apps_ready()  # ensure django setup done
-        _imp_module = self.get_imp_module(backend_name=backend_name) if backend_name else None
+        _imp_module = (
+            self.get_imp_module(backend_name=backend_name) if backend_name else None
+        )
         app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for app_label in app_labels:
             for _recordtype in self._get_recordtypes_for_app(app_label).values():
@@ -186,26 +197,6 @@ class TimeseriesTypeRegistry:
         _upstream_modules = (_cls.__module__ for _cls in given_type.__mro__)
         return module_name in _upstream_modules
 
-    def _find_app_label(self, given_type: type) -> str:
-        # Look for an application configuration to attach the model to.
-        _containing_app_configs = sorted(
-            (
-                _app_config
-                for _app_config in apps.get_app_configs()
-                if given_type.__module__.startswith(_app_config.module.__name__)
-            ),
-            key=lambda _config: len(_config.module.__name__),
-            reverse=True,  # longest module name first
-        )
-        if not _containing_app_configs:
-            raise RuntimeError(
-                f"type {given_type.__module__}.{given_type.__qualname__} "
-                "doesn't declare an explicit app_label and isn't in an "
-                "application in INSTALLED_APPS."
-            )
-        _app_config = _containing_app_configs[0]
-        return _app_config.label
-
 
 def _import_imp_module(imp_module_path: str) -> ProtoDjelmeImp:
     try:
@@ -218,5 +209,5 @@ def _import_imp_module(imp_module_path: str) -> ProtoDjelmeImp:
 ###
 # module public api
 
-djelme_registry = TimeseriesTypeRegistry()
-registry = djelme_registry  # convenience?
+djelme_registry = _DjelmeRegistry()
+registry = djelme_registry  # back-compat synonym?

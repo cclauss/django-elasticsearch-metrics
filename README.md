@@ -94,7 +94,9 @@ UsageRecord.search()
 
 ## Timeseries indexes
 
-By default, behind the scenes, a new index is created for each record type for each day that a record is saved (using UTC timezone). You can change the per-index timespan by setting `Meta.timepattern_depth` on the record type.
+By default, behind the scenes, a new index is created for each record type for each month
+in which a record is saved (using UTC timezone). You can change the per-index timespan by
+setting `Meta.timepattern_depth` on the record type.
 
 - index per day: `timepattern_depth = 3`
 - index per month: `timepattern_depth = 2`

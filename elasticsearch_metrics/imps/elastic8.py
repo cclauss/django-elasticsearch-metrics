@@ -44,7 +44,7 @@ from elasticsearch_metrics.util.anon_enough import opaque_key
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_TIMEPATTERN_DEPTH = 3  # xxxx_xx_xx
+_DEFAULT_TIMEPATTERN_DEPTH = 2  # xxxx_xx_
 
 
 class _DjelmeRecordMeta(IndexMeta):
@@ -348,6 +348,7 @@ class TimeseriesRecord(DjelmeRecord):
             return True
 
 
+# class EventRecord(TimeseriesRecord, ProtoExpirableRecord?):
 class EventRecord(TimeseriesRecord):
     # TODO: EventRecord expiration
 

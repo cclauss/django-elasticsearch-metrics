@@ -5,8 +5,10 @@ import datetime
 import hashlib
 import json
 
+from django.utils import timezone
 
-def opaque_key(key_parts: collections.abc.Iterable[str]) -> str:
+
+def opaque_key(key_parts: collections.abc.Iterable[object]) -> str:
     """opaque_key: hash function for use in privacy-protecting metrics
 
     positional args: non-None, str-able things to hash
@@ -30,13 +32,13 @@ def opaque_session_id(
 ) -> str:
     """opaque_session_id:
 
-    get a "user session" as described in the COUNTER code of practice:
+    get a hashed id for a "user session" compatible with COUNTER code of practice:
     https://cop5.projectcounter.org/en/5.0.2/07-processing/03-counting-unique-items.html
     """
-    _now = datetime.datetime.now(datetime.UTC)
+    _now = timezone.now().astimezone(datetime.UTC)
     _today_str = _now.date().isoformat()
 
-    # "A user session is defined any of the following ways: ..."
+    # "A user session is defined any of the following ways: ..." (quotes out of order)
     if client_session_id:
         # "...by a logged user cookie + transaction date + hour of day..."
         _session_id_parts = [client_session_id, _today_str, _now.hour]
@@ -50,3 +52,19 @@ def opaque_session_id(
     else:
         raise ValueError("not enough to make a session id")
     return opaque_key(_session_id_parts)
+
+
+__test__ = {
+    "opaque_session_id": """
+>>> from unittest.mock import patch
+>>> _now_patcher = patch('django.utils.timezone.now', return_value=datetime.datetime(1234, 5, 6, 7))
+>>> _now_patcher.start() and None
+>>> opaque_session_id(client_session_id='foo')
+'962bc7704445a68df301da544869719b3d892a50fe74972b59b106c983dd7379'
+>>> opaque_session_id(client_session_id='feh', user_id='blah')
+'d16d70b136c623da4832057cc5493d15246d379d21d4536be204402e4155d29c'
+>>> opaque_session_id(request_host='999.999.999.999', request_useragent='hehe')
+'109cf42215e26373a8977dcb7439b2b32a9797cfc5d6d1c6e5168cbb8dde6acd'
+>>> _now_patcher.stop() or None
+""",
+}

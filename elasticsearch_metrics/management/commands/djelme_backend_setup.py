@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from elasticsearch_metrics.apps import IMPS_SETTING
+from elasticsearch_metrics.apps import BACKENDS_SETTING
 from elasticsearch_metrics.registry import registry
 from elasticsearch_metrics.management.color import color_style
 
@@ -17,7 +17,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--backend",
             type=str,
-            help=f"name of a backend configured in settings.{IMPS_SETTING}",
+            help=f"name of a backend configured in settings.{BACKENDS_SETTING}",
         )
 
     def handle(self, *args, **options):
@@ -40,7 +40,9 @@ class Command(BaseCommand):
                 style.MIGRATE_HEADING,
             )
             _each_recordtype = (
-                registry.each_recordtype(app_label=app_label, backend_name=_backend_name)
+                registry.each_recordtype(
+                    app_label=app_label, backend_name=_backend_name
+                )
                 if _backend_name
                 else registry.each_recordtype(app_label=app_label)
             )

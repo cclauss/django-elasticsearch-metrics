@@ -297,7 +297,7 @@ class Metric(Document, BaseMetric):
         elif isinstance(using, str) and (using in djelme_registry.all_backends):
             _backend = djelme_registry.get_backend(using)
             assert isinstance(_backend, DjelmeElastic6Backend)
-            return _backend.imp_name
+            return _backend.backend_name
         return super()._get_using(using)
 
 
@@ -305,14 +305,14 @@ class Metric(Document, BaseMetric):
 class DjelmeElastic6Backend:
     """DjelmeElastic6Backend: the elastic6 implementation of djelme (for use by generic djelme code)"""
 
-    imp_name: str
+    backend_name: str
     imp_kwargs: dict[str, str]
     namespace_prefix: str = ""
 
     @property
     def elastic6_client(self):
         # assumes `connections.configure` was already called
-        return connections.get_connection(self.imp_name)
+        return connections.get_connection(self.backend_name)
 
     def setup_timeseries_indexes(self, recordtypes=()) -> None:
         for _metric_type in recordtypes or self._each_metric_type():
@@ -331,7 +331,7 @@ class DjelmeElastic6Backend:
                 pass
 
     def _each_metric_type(self) -> Iterator[type[Metric]]:
-        for _metric in djelme_registry.each_recordtype(imp_name=self.imp_name):
+        for _metric in djelme_registry.each_recordtype(backend_name=self.backend_name):
             assert issubclass(_metric, Metric)
             yield _metric
 
@@ -343,5 +343,5 @@ def djelme_when_ready(  # for ProtoDjelmeImp
     backends: Iterator[ProtoDjelmeBackend],
 ) -> None:
     connections.configure(
-        **{_backend.backend_name: _backend.backend_kwargs for _backend in backends}
+        **{_backend.backend_name: _backend.imp_kwargs for _backend in backends}
     )
