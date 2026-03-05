@@ -96,11 +96,11 @@ UsageRecord.search()
 
 By default, behind the scenes, a new index is created for each record type for each month
 in which a record is saved (using UTC timezone). You can change the per-index timespan by
-setting `Meta.timepattern_depth` on the record type.
+setting `Meta.timedepth` on the record type.
 
-- index per day: `timepattern_depth = 3`
-- index per month: `timepattern_depth = 2`
-- index per year: `timepattern_depth = 1`
+- index per day, '...YYYY_MM_DD...': `timedepth = 3`
+- index per month, '...YYYY_MM...': `timedepth = 2`
+- index per year, '...YYYY...': `timedepth = 1`
 
 
 ## Index settings

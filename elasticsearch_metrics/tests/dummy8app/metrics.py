@@ -1,4 +1,4 @@
-from elasticsearch8.dsl import Keyword, Text, mapped_field, analyzer, tokenizer
+from elasticsearch8.dsl import Text, mapped_field, analyzer, tokenizer
 from elasticsearch_metrics.imps import elastic8 as djelme
 
 dot_path_analyzer = analyzer(
@@ -26,9 +26,10 @@ class Dummy8EventWithExplicitNamePrefix(djelme.EventRecord):
 
 
 class ThingHappened(djelme.EventRecord):
-    thing_id: str | None = mapped_field(Keyword(), default=None)
-    happen_code: str | None = mapped_field(Keyword(), default=None)
-    dot_path: str | None = mapped_field(Text(analyzer=dot_path_analyzer), default=None)
+    thing_id: str = ''
+    happen_code: str = ''
+    dot_path: str = mapped_field(Text(analyzer=dot_path_analyzer), default='')
+    commentary: str = mapped_field(Text(), default='')
 
     class Index:
         settings = {"refresh_interval": "-1"}
@@ -36,13 +37,13 @@ class ThingHappened(djelme.EventRecord):
 
     class Meta:
         timeseries_recordtype_name = "happen"
-        timepattern_depth = 2
+        timedepth = 2
 
 
 # TODO: tests using ThingHappeningsReport
 class ThingHappeningsReport(djelme.CyclicRecord):
-    item_id: str = Keyword()
-    item_type: str = Keyword()
+    item_id: str
+    item_type: str
 
     class Index:
         settings = {"refresh_interval": "-1"}

@@ -1,5 +1,6 @@
 from io import StringIO
 from unittest import mock
+import typing
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
@@ -20,8 +21,8 @@ class SimpleDjelmeTestCase(SimpleTestCase):
     def run_mgmt_command(
         self,
         cmd: str | BaseCommand | type[BaseCommand],
-        *args,
-        **options,
+        *args: str,
+        **options: str,
     ) -> tuple[str, str]:
         """run a django management command, return (stdout, stderr) tuple
 
@@ -41,13 +42,14 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
     """RealElasticTestCase: base test case with actual elasticsearch running"""
 
     __auto_setup_imps: bool
+    __auto_teardown_imps: bool
 
     def __init_subclass__(
         cls,
         /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, auto_setup_imps=False)
         auto_setup_imps: bool = True,
         auto_teardown_imps: bool = True,
-        **kwargs,
+        **kwargs: typing.Any,
     ):
         super().__init_subclass__(**kwargs)
         cls.__auto_setup_imps = auto_setup_imps

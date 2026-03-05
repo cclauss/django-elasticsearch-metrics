@@ -1,5 +1,6 @@
 """elasticsearch_metrics.util.anon_enough: utilities for "anonymous enough" privacy-minded metrics"""
 
+import base64
 import collections
 import datetime
 import hashlib
@@ -8,29 +9,30 @@ import json
 from django.utils import timezone
 
 
-def opaque_key(key_parts: collections.abc.Iterable[object]) -> str:
+def opaque_key(
+    key_parts: collections.abc.Iterable[object],
+) -> str:
     """opaque_key: hash function for use in privacy-protecting metrics
 
     positional args: non-None, str-able things to hash
 
     >>> opaque_key(['hello'])
-    'c7a0f7154e64cd96c617f251dc12c4396b7234c2856ccf4860ab7af537dfcdd9'
     >>> opaque_key(['hello', 'hello', 'hello'])
-    'ebb92fdbff663124680971757e5d70a3e90a5708d48503962a16a30cde801aea'
     """
-    # plain_key = '|'.join(map(str, key_parts))
     _plain_key = json.dumps([str(_part) for _part in key_parts])
-    return hashlib.sha256(bytes(_plain_key, encoding="utf")).hexdigest()
+    return base64.b85encode(
+        hashlib.blake2b(bytes(_plain_key, encoding="utf")).digest()
+    ).decode()
 
 
-def opaque_session_id(
+def opaque_sessionhour_id(
     *,
     client_session_id: str = "",
     user_id: str = "",
     request_host: str = "",
     request_useragent: str = "",
 ) -> str:
-    """opaque_session_id:
+    """opaque_sessionhour_id:
 
     get a hashed id for a "user session" compatible with COUNTER code of practice:
     https://cop5.projectcounter.org/en/5.0.2/07-processing/03-counting-unique-items.html
@@ -55,15 +57,15 @@ def opaque_session_id(
 
 
 __test__ = {
-    "opaque_session_id": """
+    "opaque_sessionhour_id": """
 >>> from unittest.mock import patch
 >>> _now_patcher = patch('django.utils.timezone.now', return_value=datetime.datetime(1234, 5, 6, 7))
 >>> _now_patcher.start() and None
->>> opaque_session_id(client_session_id='foo')
+>>> opaque_sessionhour_id(client_session_id='foo')
 '962bc7704445a68df301da544869719b3d892a50fe74972b59b106c983dd7379'
->>> opaque_session_id(client_session_id='feh', user_id='blah')
+>>> opaque_sessionhour_id(client_session_id='feh', user_id='blah')
 'd16d70b136c623da4832057cc5493d15246d379d21d4536be204402e4155d29c'
->>> opaque_session_id(request_host='999.999.999.999', request_useragent='hehe')
+>>> opaque_sessionhour_id(request_host='999.999.999.999', request_useragent='hehe')
 '109cf42215e26373a8977dcb7439b2b32a9797cfc5d6d1c6e5168cbb8dde6acd'
 >>> _now_patcher.stop() or None
 """,

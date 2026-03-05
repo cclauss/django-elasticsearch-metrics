@@ -22,32 +22,32 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         style = color_style()
-        _app_label = options["app_label"]
+        _given_app_label = options["app_label"]
         _backend_name = options["backend"]
-        if _app_label:
-            if _app_label not in djelme_registry.all_recordtypes:
-                raise CommandError(
-                    "No recordtypes found for app '{}'".format(options["app_label"])
-                )
-            app_labels = [_app_label]
+        _app_labels: list[str]
+        if _given_app_label:
+            if _given_app_label not in djelme_registry.all_recordtypes:
+                raise CommandError(f"No recordtypes found for app {_given_app_label!r}")
+            _app_labels = [_given_app_label]
         else:
-            app_labels = djelme_registry.all_recordtypes.keys()
+            _app_labels = list(djelme_registry.all_recordtypes.keys())
         if _backend_name:
             self.stdout.write(f"Using djelme backend {_backend_name!r}")
-        for app_label in app_labels:
+        _backends = (
+            [djelme_registry.get_backend(_backend_name)]
+            if _backend_name
+            else list(djelme_registry.each_backend())
+        )
+        for app_label in _app_labels:
             self.stdout.write(
                 "Syncing recordtypes for app: '{}'".format(app_label),
                 style.MIGRATE_HEADING,
             )
-            _each_recordtype = (
-                djelme_registry.each_recordtype(
-                    app_label=app_label, backend_name=_backend_name
-                )
-                if _backend_name
-                else djelme_registry.each_recordtype(app_label=app_label)
-            )
-            for _recordtype in _each_recordtype:
-                self.stdout.write(f"  Setting up {_recordtype!r}...")
-                _recordtype.sync_index_template()
+            for _backend in _backends:
+                for _recordtype in djelme_registry.each_recordtype(
+                    app_label=app_label, backend_name=_backend.backend_name
+                ):
+                    self.stdout.write(f"  Setting up {_recordtype!r}...")
+                    _backend.setup_timeseries_indexes([_recordtype])
 
         self.stdout.write("Synchronized recordtypes.", style.SUCCESS)

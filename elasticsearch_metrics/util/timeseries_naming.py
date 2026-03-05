@@ -15,6 +15,7 @@ __all__ = (
     "format_template_name",
 )
 
+import collections
 from collections.abc import Iterator
 import datetime
 import itertools
@@ -30,7 +31,7 @@ TimeseriesIndexNamePattern = tuple[str, str, tuple[int, ...]]
 def format_index_name(
     prefix: str,
     recordtype: str,
-    timeparts: tuple[int, ...] = (),  # empty () -- all time
+    timeparts: collections.abc.Iterable[int] = (),  # empty () -- all time
 ) -> str:
     """get a full/specific index name, no wildcards or lists
     >>> format_index_name('aoeu', 'mynote', (9999,22))
@@ -48,16 +49,78 @@ def format_index_name(
     return _DELIMITER.join(_parts)
 
 
+def format_index_name_for_date(
+    given_date: datetime.date,
+    *,
+    prefix: str,
+    recordtype: str,
+    timedepth: int,
+) -> str:
+    """get a full/specific index name, no wildcards or lists
+    >>> format_index_name_for_date(datetime.date(9876,5,4), 'aoeu', 'mynote', timedepth=2)
+    'aoeu_mynote_9876_05_'
+    """
+    return format_index_name(
+        prefix, recordtype, timeparts_from_date(given_date, timedepth)
+    )
+
+
 def format_index_pattern(
     prefix: str,
     recordtype: str,
-    timeparts: tuple[int, ...] = (),  # empty () -- all time
+    timeparts: collections.abc.Iterable[int] = (),  # empty () -- all time
 ) -> str:
     """get an index-name pattern for all indexes within the given timeparts
     >>> format_index_pattern('aoeu', 'mynote', (9999,22))
     'aoeu_mynote_9999_22_*'
     """
     return f"{format_index_name(prefix, recordtype, timeparts)}*"
+
+
+def format_index_pattern_for_timerange(
+    prefix: str,
+    recordtype: str,
+    from_timeparts: collections.abc.Iterable[int],
+    until_timeparts: collections.abc.Iterable[int],
+    max_timedepth: int,
+) -> str:
+    """get an index-name pattern for all indexes within a timepart range
+    >>> format_index_pattern_for_daterange('aoeu', 'mynote',
+    ...     (5020, 02, 02), (5020, 02, 20),
+    ...     max_timedepth=2)
+    'aoeu_mynote_5020_02_*'
+    >>> format_index_pattern_for_daterange('aoeu', 'mynote',
+    ...     (5020, 02, 02), (5020, 12, 20),
+    ...     max_timedepth=2)
+    'aoeu_mynote_5020_*'
+    """
+    return format_index_pattern(
+        prefix,
+        recordtype,
+        _timerange_part_overlap(from_timeparts, until_timeparts, max_timedepth),
+    )
+
+
+def format_index_pattern_for_daterange(
+    prefix: str,
+    recordtype: str,
+    from_date: datetime.date,
+    until_date: datetime.date,
+    max_timedepth: int,
+) -> str:
+    """get an index-name pattern for all indexes within a date range
+    >>> format_index_pattern_for_daterange('aoeu', 'mynote',
+    ...     datetime.date(2050, 05, 05), datetime.date(2050, 05, 08),
+    ...     max_timedepth=2)
+    'aoeu_mynote_2050_05_*'
+    """
+    return format_index_pattern_for_timerange(
+        prefix,
+        recordtype,
+        _each_timepart_from_date(from_date),
+        _each_timepart_from_date(until_date),
+        max_timedepth,
+    )
 
 
 def format_template_name(
@@ -103,15 +166,21 @@ def parse_index_pattern(given_pattern: str) -> TimeseriesIndexNamePattern:
     return (_prefix, _recordtype, tuple(_parse_timename(_timename)))
 
 
-def timerange_parts(start: tuple[int, ...], end: tuple[int, ...]) -> tuple[int, ...]:
-    return tuple(_each_timerange_part(start, end))
+def _timerange_part_overlap(
+    start: collections.abc.Iterable[int],
+    end: collections.abc.Iterable[int],
+    max_overlap: int,
+) -> collections.abc.Iterable[int]:
+    return tuple(itertools.islice(_shared_timeparts(start, end), max_overlap))
 
 
-def _each_timerange_part(
-    start: tuple[int, ...], end: tuple[int, ...]
-) -> Iterator[int, ...]:
+def _shared_timeparts(
+    start: collections.abc.Iterable[int], end: collections.abc.Iterable[int]
+) -> Iterator[int]:
     for _startpart, _endpart in zip(start, end, strict=False):
-        yield _startpart if (_startpart == _endpart) else None
+        if _startpart != _endpart:
+            break
+        yield _startpart
 
 
 def _format_timename(*timeparts: int) -> str:
@@ -177,7 +246,7 @@ def timename_from_date(given_date: datetime.date, part_count: int) -> str:
     return _format_timename(*_timeparts)
 
 
-def timeparts_from_date(given_date: datetime.date, part_count: int) -> tuple[str, ...]:
+def timeparts_from_date(given_date: datetime.date, part_count: int) -> tuple[int, ...]:
     """
     >>> timeparts_from_date(datetime.date(3456, 7, 8), 2)
     (3456, 7)

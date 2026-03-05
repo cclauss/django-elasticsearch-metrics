@@ -22,9 +22,12 @@ import datetime
 import logging
 import typing
 
-from django.utils import timezone
+import django
 from elasticsearch8.exceptions import NotFoundError
-from elasticsearch8 import Elasticsearch as Elastic8Client
+from elasticsearch8 import (
+    Elasticsearch as Elastic8Client,
+    Connection as Elastic8Connection,
+)
 from elasticsearch8.dsl import (
     Document,
     connections,
@@ -39,12 +42,13 @@ from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.protocols import ProtoDjelmeBackend
 from elasticsearch_metrics.util import timeseries_naming
-from elasticsearch_metrics.util.anon_enough import opaque_key
+from elasticsearch_metrics.util.unique_together import get_unique_id
+from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
 
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_TIMEPATTERN_DEPTH = 2  # xxxx_xx_
+_DEFAULT_TIMEDEPTH = 2  # xxxx_xx_ (monthly)
 
 
 class _DjelmeRecordMeta(IndexMeta):
@@ -54,30 +58,36 @@ class _DjelmeRecordMeta(IndexMeta):
     additional config in a type's `class Meta`
     """
 
+    # override IndexMeta.__new__, to do a few things differently
     def __new__(mcls, name, bases, attrs):  # noqa: B902
-        # override IndexMeta.__new__, which removes `class Meta`
-        _doc_type_meta = attrs.get("Meta") or type("Meta", (), {})
+        # save `class Meta` to un-remove it later
+        _cls_meta = attrs.get("Meta") or type("Meta", (), {})
+        # call IndexMeta.__new__
         _cls = super().__new__(mcls, name, bases, attrs)
+        # un-remove `class Meta`
         if "Meta" in _cls.__dict__:
-            for _attrname, _attrval in _doc_type_meta.__dict__.items():
+            for _attrname, _attrval in _cls_meta.__dict__.items():
                 if not hasattr(_cls.Meta, _attrname):
                     setattr(_cls.Meta, _attrname, _attrval)
         else:
-            _cls.Meta = _doc_type_meta
-        # register non-abstract subtypes
+            _cls.Meta = _cls_meta
+
+        # change default mapping for `str` annotations from Text to Keyword
+        _cls._doc_type.type_annotation_map[str] = (Keyword, {})
+        # and register concrete record types with the djelme registry
         if not _cls.is_abstract:
             djelme_registry.register_recordtype(
                 _cls, app_label=_cls._get_meta_attr("app_label", None)
             )
         return _cls
 
-    def _get_meta_attr(self, attr_name: str, default=None):
+    def _get_meta_attr(self, attr_name: str, default: typing.Any = None) -> typing.Any:
         _meta = getattr(self, "Meta", None)
         return getattr(_meta, attr_name, default)
 
     @property
     def is_abstract(self) -> bool:
-        return self._get_meta_attr("abstract", False)
+        return bool(self._get_meta_attr("abstract", False))
 
     @property
     def app_label(self) -> str | None:
@@ -157,35 +167,29 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
     def _populate_unique_id(self) -> None:
         _unique_id = self._get_unique_id()
         assert _unique_id or not self.UNIQUE_TOGETHER_FIELDS
-        if self.unique_id and (self.unique_id != _unique_id):
-            raise RuntimeError("unique_id set to a wrong value! prefer not setting it")
-        self.unique_id = _unique_id
+        self.unique_id = _unique_id or ""
+        # make it unique by setting doc id in elasticsearch
         if _unique_id and not self.meta.id:
-            self.meta.id = _unique_id  # set doc id, but don't error if it's already set
+            self.meta.id = _unique_id
 
-    def _get_unique_id(self) -> str:
+    def _get_unique_id(self) -> str | None:
         """
         Get a unique document id by hashing values of "unique together"
         fields for "ON CONFLICT UPDATE" behavior -- if the document
         already exists, it will be replaced rather than duplicated.
         Cannot detect/avoid conflicts this way, but that's ok.
         """
-        _key_values = []
-        for _field_name in self.UNIQUE_TOGETHER_FIELDS:
-            _field_value = getattr(self, _field_name)
-            if not _field_value or (
-                isinstance(_field_value, collections.abc.Iterable)
-                and not isinstance(_field_value, str)
-            ):
-                raise ValueError(
-                    f"expected non-empty str-able value in field {_field_name!r}; got {_field_value!r}"
-                )
-            _key_values.append(_field_value)
-        return opaque_key(_key_values) if _key_values else ""
+        if not self.UNIQUE_TOGETHER_FIELDS:
+            return None
+        return get_unique_id(
+            (getattr(self, _field_name) for _field_name in self.UNIQUE_TOGETHER_FIELDS)
+        )
 
 
 class TimeseriesRecord(DjelmeRecord):
-    timestamp: datetime.datetime = mapped_field(default_factory=timezone.now)
+    timestamp: datetime.datetime = mapped_field(
+        default_factory=django.utils.timezone.now
+    )
 
     class Meta:
         abstract = True
@@ -208,14 +212,11 @@ class TimeseriesRecord(DjelmeRecord):
     def format_timeseries_index_name(
         cls, timestamp: datetime.date | None = None
     ) -> str:
-        _timeparts = timeseries_naming.timeparts_from_date(
-            timestamp or timezone.now(),
-            cls.get_timepattern_depth(),
-        )
-        return timeseries_naming.format_index_name(
+        return timeseries_naming.format_index_name_for_date(
+            timestamp or django.utils.timezone.now(),
             prefix=cls.get_timeseries_name_prefix(),
             recordtype=cls.get_timeseries_recordtype_name(),
-            timeparts=_timeparts,
+            timedepth=cls.get_timedepth(),
         )
 
     @classmethod
@@ -233,11 +234,17 @@ class TimeseriesRecord(DjelmeRecord):
 
     @classmethod
     def get_timeseries_recordtype_name(cls) -> str:
-        return cls._get_meta_attr("timeseries_recordtype_name", cls.__name__)
+        _recordtype_name = cls._get_meta_attr(
+            "timeseries_recordtype_name", cls.__name__
+        )
+        assert isinstance(_recordtype_name, str)
+        return _recordtype_name
 
     @classmethod
     def get_timeseries_name_prefix(cls) -> str:
-        return cls._get_meta_attr("timeseries_name_prefix") or cls.app_label
+        _name_prefix = cls._get_meta_attr("timeseries_name_prefix") or cls.app_label
+        assert isinstance(_name_prefix, str)
+        return _name_prefix
 
     @classmethod
     def format_timeseries_index_pattern(cls, timeparts: tuple[int, ...] = ()) -> str:
@@ -248,8 +255,10 @@ class TimeseriesRecord(DjelmeRecord):
         )
 
     @classmethod
-    def get_timepattern_depth(cls) -> int:
-        return cls._get_meta_attr("timepattern_depth", _DEFAULT_TIMEPATTERN_DEPTH)
+    def get_timedepth(cls) -> int:
+        _timedepth = cls._get_meta_attr("timedepth", _DEFAULT_TIMEDEPTH)
+        assert isinstance(_timedepth, int)
+        return _timedepth
 
     @classmethod
     def _default_index(cls, index=None):
@@ -269,15 +278,16 @@ class TimeseriesRecord(DjelmeRecord):
 
         overrides `save` to choose a timeseries index based on `self.timestamp`
         """
-        if self.timestamp is None:
-            self.timestamp = timezone.now()  # HACK: why default_factory no work?
+        assert self.timestamp is not None
         if index is None:
             index = self.timeseries_index_name
         ret = super().save(index=index, **kwargs)
         return ret
 
     @classmethod
-    def sync_index_template(cls, using=None) -> ComposableIndexTemplate:
+    def sync_index_template(
+        cls, using: str | Elastic8Connection | None = None
+    ) -> ComposableIndexTemplate:
         """Sync the index template for this metric in Elasticsearch."""
         _template = cls.get_timeseries_template()
         signals.pre_index_template_create.send(
@@ -348,17 +358,79 @@ class TimeseriesRecord(DjelmeRecord):
             return True
 
 
+# TODO: EventRecord expiration
 # class EventRecord(TimeseriesRecord, ProtoExpirableRecord?):
 class EventRecord(TimeseriesRecord):
-    # TODO: EventRecord expiration
+    sessionhour_id: str = mapped_field(Keyword(), default="")
+
+    class Meta:
+        abstract = True
+
+    @classmethod
+    def record(
+        cls,
+        *,  # get these dirty identifying strings out of the way
+        user_id: str = "",
+        session_id: str = "",
+        request_host: str = "",
+        request_useragent: str = "",
+        django_request: (
+            django.http.HttpRequest | None
+        ) = None,  # or infer those from a django request
+        **kwargs: typing.Any,
+    ) -> typing.Self:
+        _useragent = (
+            request_useragent
+            if (request_useragent or (django_request is None))
+            else django_request.META.get("HTTP_USER_AGENT", "")
+        )
+        _host = (
+            request_host
+            if (request_host or (django_request is None))
+            else django_request.get_host()
+        )
+        _sessionhour_id = opaque_sessionhour_id(
+            client_session_id=session_id,
+            user_id=user_id,
+            request_host=_useragent,
+            request_useragent=_host,
+        )
+        _new_record = super().record(
+            **kwargs,
+            sessionhour_id=opaque_sessionhour_id(
+                client_session_id=_sessionhour_id,
+                user_id=user_id,
+                request_host=_useragent,
+                request_useragent=_host,
+            ),
+        )
+        assert isinstance(_new_record, cls)
+        return _new_record
+
+
+class CountedUsageRecord(EventRecord):
+    # fields correspond to defined terms from COUNTER
+    # https://cop5.projectcounter.org/en/5.0.2/appendices/a-glossary-of-terms.html
+
+    # inherited EventRecord.sessionhour_id corresponds to counter:Session
+
+    # counter:Platform
+    platform_iri: str
+    # counter:Database
+    database_iri: str
+    # counter:Item
+    item_iri: str
+    # within_iris corresponds roughly to counter:Title, but as a more
+    # inclusive within/part-of/contained-by relationship
+    within_iris: list[str] = mapped_field(Keyword(), default_factory=list)
 
     class Meta:
         abstract = True
 
 
 class CyclicRecord(TimeseriesRecord):
-    covers_from: datetime.date
-    covers_before: datetime.date
+    covers_from: datetime.datetime
+    covers_before: datetime.datetime
 
     class Meta:
         abstract = True
@@ -382,11 +454,11 @@ class DjelmeElastic8Backend:
         return self.backend_name
 
     @property
-    def _elastic8dsl_connection_kwargs(self) -> dict:
+    def _elastic8dsl_connection_kwargs(self) -> dict[str, typing.Any]:
         return self.imp_kwargs
 
-    def setup_timeseries_indexes(self) -> None:
-        for _recordtype in self._each_recordtype():
+    def setup_timeseries_indexes(self, recordtypes=()):
+        for _recordtype in recordtypes or self._each_recordtype():
             # TODO: logger.info
             _recordtype.sync_index_template(using=self.elastic8_client)
 
@@ -419,10 +491,10 @@ djelme_backend = DjelmeElastic8Backend  # for ProtoDjelmeImp
 def djelme_when_ready(  # for ProtoDjelmeImp
     backends: collections.abc.Iterable[ProtoDjelmeBackend],
 ) -> None:
-    assert all(isinstance(_backend, DjelmeElastic8Backend) for _backend in backends)
     connections.configure(
         **{
             _backend._elastic8dsl_connection_name: _backend._elastic8dsl_connection_kwargs
             for _backend in backends
+            if isinstance(_backend, DjelmeElastic8Backend)
         }
     )

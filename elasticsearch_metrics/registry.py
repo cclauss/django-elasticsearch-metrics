@@ -141,8 +141,9 @@ class _DjelmeRegistry:
         app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for app_label in app_labels:
             for _recordtype in self._get_recordtypes_for_app(app_label).values():
-                if (_imp_module is None) or self._is_type_downstream_of_module(
-                    _recordtype, _imp_module.__name__
+                _imp_module_path = getattr(_imp_module, "__name__", None)
+                if (_imp_module_path is None) or self._is_type_downstream_of_module(
+                    _recordtype, _imp_module_path
                 ):
                     yield _recordtype
 
@@ -166,7 +167,7 @@ class _DjelmeRegistry:
             yield self.get_backend(_backend_name)
 
     def each_app_label(self) -> collections.abc.Iterable[str]:
-        return self.all_recordtypes.keys()
+        yield from self.all_recordtypes.keys()
 
     ###
     # private methods
@@ -203,6 +204,7 @@ def _import_imp_module(imp_module_path: str) -> ProtoDjelmeImp:
         _imp_module = importlib.import_module(imp_module_path)
     except ImportError as _error:
         raise ValueError(f"could not import {imp_module_path!r}") from _error
+    assert isinstance(_imp_module, ProtoDjelmeImp)
     return _imp_module
 
 

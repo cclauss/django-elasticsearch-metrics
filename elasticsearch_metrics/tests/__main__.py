@@ -18,7 +18,6 @@ _parser.add_argument("passthru_test_args", nargs="*")
 
 
 def run_tests(passthru_test_args: tuple[str, ...] = (), coverage: bool = False) -> None:
-    print_header("tests")
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE", "elasticsearch_metrics.tests.settings"
     )

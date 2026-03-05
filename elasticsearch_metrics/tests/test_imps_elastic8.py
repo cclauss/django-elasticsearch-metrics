@@ -43,7 +43,7 @@ class TestFormatIndexName(SimpleDjelmeTestCase):
 
     def test_format_index_name_respects_date_format_setting(self):
         with unittest.mock.patch.object(
-            ThingHappened.Meta, "timepattern_depth", 4, create=True
+            ThingHappened.Meta, "timedepth", 4, create=True
         ):
             date = dt.date(2020, 2, 14)
             self.assertEqual(

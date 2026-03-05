@@ -14,7 +14,9 @@ class ProtoDjelmeBackend(typing.Protocol):
     @property
     def imp_kwargs(self) -> dict[str, str]: ...
 
-    def setup_timeseries_indexes(self) -> None: ...
+    def setup_timeseries_indexes(
+        self, recordtypes: collections.abc.Iterable[type[ProtoTimeseriesRecord]] = ()
+    ) -> None: ...
     def teardown_timeseries_indexes(self) -> None: ...
 
     # def each_timeseries_recordtype(
@@ -35,7 +37,11 @@ class ProtoTimeseriesRecord(typing.Protocol):
     @classmethod
     def each_timeseries_index_status(cls) -> collections.abc.Iterable[str]: ...
 
+    @classmethod
+    def check_timeseries_setup(cls, using=None):
 
+
+@typing.runtime_checkable
 class ProtoDjelmeImp(typing.Protocol):
     @staticmethod
     def djelme_backend(

@@ -12,11 +12,12 @@ def find_app_label_for_type(given_type: type) -> str:
     _containing_app_configs = (
         _app_config
         for _app_config in apps.get_app_configs()
-        if _given_module_name.startswith(_app_config.module.__name__)
+        if (_app_config.module is not None)
+        and _given_module_name.startswith(_app_config.module.__name__)
     )
     _nearest_containing_app_config = max(
         _containing_app_configs,
-        key=lambda _config: len(_config.module.__name__),
+        key=lambda _config: len(_config.module.__name__),  # type: ignore[union-attr]
         default=None,
     )
     if _nearest_containing_app_config is None:
