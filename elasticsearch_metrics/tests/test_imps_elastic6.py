@@ -10,6 +10,7 @@ from elasticsearch6_dsl import (
     tokenizer,
     connections,
 )
+from elasticsearch6_dsl.document import MetaField
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics.exceptions import (
@@ -178,7 +179,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
             class Meta:
                 app_label = "dummy6app"
                 template_name = "mymetric"
-                source = elastic6.MetaField(enabled=True)
+                source = MetaField(enabled=True)
 
         template = MyMetric.get_timeseries_index_template()
 
@@ -278,7 +279,7 @@ class TestIntegration(RealElasticTestCase):
         assert properties["preprint_id"] == {"type": "keyword"}
 
 
-class TestIntegrationSetup(RealElasticTestCase, auto_setup_imps=False):
+class TestIntegrationSetup(RealElasticTestCase, autosetup_djelme_backends=False):
     @property
     def es6_client(self):
         return connections.get_connection("my_elastic6")
@@ -293,22 +294,22 @@ class TestIntegrationSetup(RealElasticTestCase, auto_setup_imps=False):
         assert properties["page_id"] == {"type": "keyword"}
         assert properties["preprint_id"] == {"type": "keyword"}
 
-    def test_check_index_template(self):
+    def test_check_djelme_setup(self):
         with self.assertRaises(IndexTemplateNotFoundError):
-            assert PreprintView.check_index_template() is False
+            assert PreprintView.check_djelme_setup() is False
         PreprintView.sync_index_template()
-        assert PreprintView.check_index_template() is True
+        assert PreprintView.check_djelme_setup() is True
 
         # When settings change, template is out of sync
         PreprintView._index.settings(
             **{"refresh_interval": "1s", "number_of_shards": 1, "number_of_replicas": 2}
         )
         with self.assertRaises(IndexTemplateOutOfSyncError) as excinfo:
-            assert PreprintView.check_index_template() is False
+            assert PreprintView.check_djelme_setup() is False
         error = excinfo.exception
         assert error.settings_in_sync is False
         assert error.mappings_in_sync is True
         assert error.patterns_in_sync is True
 
         PreprintView.sync_index_template()
-        assert PreprintView.check_index_template() is True
+        assert PreprintView.check_djelme_setup() is True

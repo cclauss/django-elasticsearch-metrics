@@ -33,7 +33,7 @@ class Command(BaseCommand):
         for app_label in app_labels:
             for _recordtype in djelme_registry.each_recordtype(app_label=app_label):
                 try:
-                    _recordtype.check_index_template()
+                    _recordtype.check_djelme_setup()
                 except (
                     exceptions.IndexTemplateNotFoundError,
                     exceptions.IndexTemplateOutOfSyncError,

@@ -246,7 +246,7 @@ class TestCreateDocument(RealElasticTestCase):
         assert properties["happen_code"] == {"type": "keyword"}
 
 
-class TestInit(RealElasticTestCase, auto_setup_imps=False):
+class TestInit(RealElasticTestCase, autosetup_djelme_backends=False):
     def test_init(self):
         ThingHappened.init()
         name = ThingHappened.format_timeseries_index_name()
@@ -256,22 +256,22 @@ class TestInit(RealElasticTestCase, auto_setup_imps=False):
         assert properties["thing_id"] == {"type": "keyword"}
         assert properties["happen_code"] == {"type": "keyword"}
 
-    def test_check_index_template(self):
+    def test_check_djelme_setup(self):
         with self.assertRaises(IndexTemplateNotFoundError):
-            assert ThingHappened.check_index_template() is False
+            assert ThingHappened.check_djelme_setup() is False
         ThingHappened.sync_index_template()
-        assert ThingHappened.check_index_template() is True
+        assert ThingHappened.check_djelme_setup() is True
 
         # When settings change, template is out of sync
         ThingHappened._index.settings(
             **{"refresh_interval": "1s", "number_of_shards": 1, "number_of_replicas": 2}
         )
         with self.assertRaises(IndexTemplateOutOfSyncError) as excinfo:
-            assert ThingHappened.check_index_template() is False
+            assert ThingHappened.check_djelme_setup() is False
         error = excinfo.exception
         assert error.settings_in_sync is False
         assert error.mappings_in_sync is True
         assert error.patterns_in_sync is True
 
         ThingHappened.sync_index_template()
-        assert ThingHappened.check_index_template() is True
+        assert ThingHappened.check_djelme_setup() is True

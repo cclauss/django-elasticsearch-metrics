@@ -1,12 +1,13 @@
 import collections
 import dataclasses
 import importlib
+import weakref
 
 from django.apps import apps
 
 from elasticsearch_metrics.protocols import (
     ProtoDjelmeBackend,
-    ProtoTimeseriesRecord,
+    ProtoDjelmeRecord,
     ProtoDjelmeImp,
 )
 from elasticsearch_metrics.util.django import find_app_label_for_type
@@ -28,11 +29,16 @@ class _DjelmeRegistry:
     """
 
     # nested mapping from app labels => record-type names => record classes
-    all_recordtypes: dict[str, dict[str, type]] = dataclasses.field(
-        default_factory=lambda: collections.defaultdict(dict),
+    # (using weakref so if the class is destroyed, no longer registered)
+    all_recordtypes: collections.abc.MutableMapping[
+        str, collections.abc.MutableMapping[str, type[ProtoDjelmeRecord]]
+    ] = dataclasses.field(
+        default_factory=lambda: collections.defaultdict(
+            lambda: weakref.WeakValueDictionary[str, type]()
+        )
     )
 
-    # nested mapping from backend_name => imp_module_path => imp backend config dictionary
+    # nested mapping from backend_name => imp_module_name => imp backend config dictionary
     # (note, only one imp module allowed per backend (for now))
     all_backends: dict[str, dict[str, dict[str, str]]] = dataclasses.field(
         default_factory=dict,
@@ -41,17 +47,27 @@ class _DjelmeRegistry:
     ###
     # `register` methods: for adding items to the registry
 
+    def register_backend(
+        self, backend_name: str, imp_module_name: str, imp_kwargs: dict[str, str]
+    ) -> None:
+        if backend_name in self.all_backends:
+            raise RuntimeError(f"duplicate imps named {backend_name!r}")
+        self.all_backends[backend_name] = {imp_module_name: imp_kwargs}
+
     def register_recordtype(
-        self, recordtype: type[ProtoTimeseriesRecord], *, app_label: str = ""
+        self,
+        recordtype: type[ProtoDjelmeRecord],
+        *,
+        app_label: str = "",
     ) -> None:
         """Add a record type to the registry."""
         _app_label = app_label or find_app_label_for_type(recordtype)
         app_recordtypes = self.all_recordtypes[_app_label]
         recordtype_name = recordtype.__name__.lower()
         if recordtype_name in app_recordtypes:
-            # Raise an error for conflicting metrics (same behavior as apps.register_model)
+            # Raise an error for conflicting recordtype names (same behavior as apps.register_model)
             raise RuntimeError(
-                "Conflicting '{}' metrics in application '{}': {} and {}.".format(
+                "Conflicting '{}' recordtypes in application '{}': {} and {}.".format(
                     recordtype_name,
                     _app_label,
                     app_recordtypes[recordtype_name],
@@ -59,13 +75,6 @@ class _DjelmeRegistry:
                 )
             )
         app_recordtypes[recordtype_name] = recordtype
-
-    def register_backend(
-        self, backend_name: str, imp_module_path: str, imp_kwargs: dict[str, str]
-    ) -> None:
-        if backend_name in self.all_backends:
-            raise RuntimeError(f"duplicate imps named {backend_name!r}")
-        self.all_backends[backend_name] = {imp_module_path: imp_kwargs}
 
     ###
     # `get` methods: for accessing specific items in the registry
@@ -113,54 +122,57 @@ class _DjelmeRegistry:
         return _imp_module.djelme_backend(backend_name, _imp_kwargs, namespace_prefix)
 
     def get_imp_module(
-        self, imp_module_path: str = "", *, backend_name: str = ""
+        self, imp_module_name: str = "", *, backend_name: str = ""
     ) -> ProtoDjelmeImp:
-        _to_import = imp_module_path
+        _to_import = imp_module_name
         if backend_name:
-            assert not imp_module_path  # one or the other
-            _registered_module_path, _ = self._lookup_backend(backend_name)
-            _to_import = _registered_module_path
+            assert not imp_module_name  # one or the other
+            _registered_module_name, _ = self._lookup_backend(backend_name)
+            _to_import = _registered_module_name
         return _import_imp_module(_to_import)
+
+    def get_default_backend(self, from_module_name: str) -> ProtoDjelmeBackend:
+        return self.get_backend(self.get_default_backend_name(from_module_name))
+
+    def get_default_backend_name(self, from_module_name: str) -> str:
+        self.all_backends[backend_name] = {imp_module_name: imp_kwargs}
+        (_backend_name,) = (
+            _backend.backend_name
+            for _backend in self.each_backend()
+            if self._is_type_downstream_of_module(...
+        return _backend_name
 
     ###
     # `each` methods: for iterating over each registered
 
     def each_recordtype(
         self,
+        *,
         app_label: str = "",
-        backend_name: str = "",
-    ) -> collections.abc.Iterator[type]:
-        """Iterate registered metric classes, optionally filtered on an app_label and/or backend_name."""
+    ) -> collections.abc.Iterator[type[ProtoDjelmeRecord]]:
+        """Iterate registered metric classes, optionally filtered on an app_label"""
         apps.check_apps_ready()  # ensure django setup done
-        _imp_module = (
-            self.get_imp_module(backend_name=backend_name) if backend_name else None
-        )
-        app_labels = [app_label] if app_label else self.all_recordtypes.keys()
-        for app_label in app_labels:
-            for _recordtype in self._get_recordtypes_for_app(app_label).values():
-                _imp_module_path = getattr(_imp_module, "__name__", None)
-                if (_imp_module_path is None) or self._is_type_downstream_of_module(
-                    _recordtype, _imp_module_path
-                ):
-                    yield _recordtype
+        _app_labels = [app_label] if app_label else self.all_recordtypes.keys()
+        for _app_label in _app_labels:
+            for _recordtype in self.all_recordtypes[_app_label].values():
+                yield _recordtype
 
     def each_backend_name(
         self,
         *,
-        imp_module_path: str = "",
+        imp_module_name: str = "",
     ) -> collections.abc.Iterator[str]:
         apps.check_apps_ready()  # ensure django setup done
-        for _imp_name, _imp_config in self.all_backends.items():
-            if (not imp_module_path) or (imp_module_path in _imp_config):
-                yield _imp_name
+        for _backend_name, _imp_config in self.all_backends.items():
+            if (not imp_module_name) or (imp_module_name in _imp_config):
+                yield _backend_name
 
     def each_backend(
         self,
         *,
-        imp_module_path: str = "",
+        imp_module_name: str = "",
     ) -> collections.abc.Iterator[ProtoDjelmeBackend]:
-        apps.check_apps_ready()  # ensure django setup done
-        for _backend_name in self.each_backend_name(imp_module_path=imp_module_path):
+        for _backend_name in self.each_backend_name(imp_module_name=imp_module_name):
             yield self.get_backend(_backend_name)
 
     def each_app_label(self) -> collections.abc.Iterable[str]:
@@ -175,16 +187,18 @@ class _DjelmeRegistry:
         except KeyError as _e:
             raise LookupError(f"unknown imp {backend_name!r}") from _e
         assert len(_backend_settings) == 1
-        ((_imp_module_path, _imp_kwargs),) = _backend_settings.items()
-        return (_imp_module_path, _imp_kwargs)
+        ((_imp_module_name, _imp_kwargs),) = _backend_settings.items()
+        return (_imp_module_name, _imp_kwargs)
 
     def _lookup_imp_module(
         self, backend_name: str
     ) -> tuple[ProtoDjelmeImp, dict[str, str]]:
-        _imp_module_path, _imp_kwargs = self._lookup_backend(backend_name)
-        return (_import_imp_module(_imp_module_path), _imp_kwargs)
+        _imp_module_name, _imp_kwargs = self._lookup_backend(backend_name)
+        return (_import_imp_module(_imp_module_name), _imp_kwargs)
 
-    def _get_recordtypes_for_app(self, app_label: str) -> dict[str, type]:
+    def _get_recordtypes_for_app(
+        self, app_label: str
+    ) -> collections.abc.Mapping[str, type]:
         if app_label not in self.all_recordtypes:
             raise LookupError(
                 "No recordtypes found in app with label '{}'.".format(app_label)
@@ -196,11 +210,11 @@ class _DjelmeRegistry:
         return module_name in _upstream_modules
 
 
-def _import_imp_module(imp_module_path: str) -> ProtoDjelmeImp:
+def _import_imp_module(imp_module_name: str) -> ProtoDjelmeImp:
     try:
-        _imp_module = importlib.import_module(imp_module_path)
+        _imp_module = importlib.import_module(imp_module_name)
     except ImportError as _error:
-        raise ValueError(f"could not import {imp_module_path!r}") from _error
+        raise ValueError(f"could not import {imp_module_name!r}") from _error
     assert isinstance(_imp_module, ProtoDjelmeImp)
     return _imp_module
 

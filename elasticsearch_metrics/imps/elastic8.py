@@ -144,14 +144,17 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
         """
         _backend = None
         if using in (None, "default"):
-            _each_backend = djelme_registry.each_backend(imp_module_path=__name__)
-            _backend = next(_each_backend, None)
+            _backend = djelme_registry.get_default_backend(__name__)
         elif isinstance(using, str) and (using in djelme_registry.all_backends):
             _backend = djelme_registry.get_backend(using)
         if _backend is not None:
             assert isinstance(_backend, DjelmeElastic8Backend)
             return _backend._elastic8dsl_connection_name
         return super()._get_using(using)
+
+    @classmethod
+    def _djelme_teardown(cls, es_client):
+        raise NotImplementedError("oh hey, a non-timeseries use for this")
 
     def save(self, *, using=None, index=None, **kwargs):
         """save the record
@@ -207,6 +210,18 @@ class TimeseriesRecord(DjelmeRecordtype):
             index=(index or cls.format_timeseries_index_name()),
             using=cls._get_using(using),
         )
+
+    @classmethod
+    def _djelme_teardown(cls, es8_client: Elastic8Client) -> None:
+        _indexname_wildcard = cls.format_timeseries_index_pattern()
+        _indices = es8_client.indices.get(index=_indexname_wildcard, features=",")
+        for _index_name in _indices.keys():
+            es8_client.indices.delete(index=_index_name)
+        _templatename = cls.get_timeseries_template_name()
+        try:
+            es8_client.indices.delete_index_template(name=_templatename)
+        except NotFoundError:
+            pass
 
     @classmethod
     def format_timeseries_index_name(
@@ -298,7 +313,7 @@ class TimeseriesRecord(DjelmeRecordtype):
         return _template
 
     @classmethod
-    def check_index_template(cls, using=None):
+    def check_djelme_setup(cls, using: str | None = None) -> bool:
         """Check if class is in sync with index template in Elasticsearch.
 
         :raise: IndexTemplateNotFoundError if index template does not exist.
@@ -424,11 +439,6 @@ class CountedUsageRecord(EventRecord):
         return _new_record
 
 
-if __debug__:
-    # for static type-checking; verify intent
-    _: ProtoCountedUsage = CountedUsageRecord
-
-
 class CyclicRecord(TimeseriesRecord):
     """CyclicRecord: for recording a measurement on a periodic basis"""
 
@@ -460,30 +470,24 @@ class DjelmeElastic8Backend:
     def _elastic8dsl_connection_kwargs(self) -> dict[str, typing.Any]:
         return self.imp_kwargs
 
-    def setup_timeseries_indexes(self, recordtypes=()):
-        for _recordtype in recordtypes or self._each_recordtype():
+    def djelme_setup(self, recordtypes: collections.abc.Iterable[type]) -> None:
+        # for ProtoDjelmeBackend
+        for _recordtype in recordtypes:
             # TODO: logger.info
-            _recordtype.sync_index_template(using=self.elastic8_client)
+            if issubclass(_recordtype, DjelmeRecordtype):
+                _recordtype.init(using=self._elastic8dsl_connection_name)
 
-    def teardown_timeseries_indexes(self) -> None:
-        for _recordtype in self._each_recordtype():
-            _indexname_wildcard = _recordtype.format_timeseries_index_pattern()
-            _indices = self.elastic8_client.indices.get(
-                index=_indexname_wildcard, features=","
-            )
-            for _index_name in _indices.keys():
-                self.elastic8_client.indices.delete(index=_index_name)
-            _templatename = _recordtype.get_timeseries_template_name()
-            try:
-                self.elastic8_client.indices.delete_index_template(name=_templatename)
-            except NotFoundError:
-                pass
+    def djelme_teardown(self, recordtypes: collections.abc.Iterable[type]) -> None:
+        # for ProtoDjelmeBackend
+        for _recordtype in recordtypes:
+            assert isinstance(_recordtype, DjelmeRecordtype)
+            _recordtype._djelme_teardown(self.elastic8_client)
 
-    def _each_recordtype(self) -> collections.abc.Iterator[type[DjelmeRecordtype]]:
-        for _type in djelme_registry.each_recordtype(backend_name=self.backend_name):
-            assert issubclass(_type, DjelmeRecordtype)
-            yield _type
 
+if __debug__ and typing.TYPE_CHECKING:
+    # for static type-checking; verify intent
+    _: type[ProtoCountedUsage] = CountedUsageRecord
+    __: type[ProtoDjelmeBackend] = DjelmeElastic8Backend
 
 ###
 # names expected by ProtoDjelmeImp

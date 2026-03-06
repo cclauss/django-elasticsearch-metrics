@@ -6,4 +6,8 @@
 3. Tag the commit: `git tag x.y.z`
 4. Push the tag: `git push --tags origin master`
 
-Travis will take care of releasing to PyPI.
+## dist
+```
+poetry build
+```
+(TODO: to pypi)

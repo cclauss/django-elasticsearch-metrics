@@ -20,21 +20,14 @@ class SimpleDjelmeTestCase(SimpleTestCase):
         return result
 
     def run_mgmt_command(
-        self,
-        cmd: str | BaseCommand | types.ModuleType,
-        *args: str,
-        **options: str
+        self, cmd: str | BaseCommand | types.ModuleType, *args: str, **options: str
     ) -> tuple[str, str]:
         """run a django management command, return (stdout, stderr) tuple
 
         wraps django.core.management.call_command to handle string-io and
         also accept a management command module
         """
-        _cmd = (
-            cmd.Command()
-            if isinstance(cmd, types.ModuleType)
-            else cmd
-        )
+        _cmd = cmd.Command() if isinstance(cmd, types.ModuleType) else cmd
         _out, _err = StringIO(), StringIO()
         call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
         return _out.getvalue(), _err.getvalue()
@@ -43,40 +36,44 @@ class SimpleDjelmeTestCase(SimpleTestCase):
 class RealElasticTestCase(SimpleDjelmeTestCase):
     """RealElasticTestCase: base test case with actual elasticsearch running"""
 
-    __auto_setup_imps: bool
-    __auto_teardown_imps: bool
+    __autosetup_backends: bool
+    __autoteardown_backends: bool
 
     def __init_subclass__(
         cls,
-        /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, auto_setup_imps=False)
-        auto_setup_imps: bool = True,
-        auto_teardown_imps: bool = True,
+        /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, autosetup_djelme_backends=False)
+        autosetup_djelme_backends: bool = True,
+        autoteardown_djelme_backends: bool = True,
         **kwargs: typing.Any,
     ):
         super().__init_subclass__(**kwargs)
-        cls.__auto_setup_imps = auto_setup_imps
-        cls.__auto_teardown_imps = auto_teardown_imps
+        cls.__autosetup_backends = autosetup_djelme_backends
+        cls.__autoteardown_backends = autoteardown_djelme_backends
 
     def setUp(self):
         super().setUp()
-        if self.__auto_setup_imps:
-            self.setup_djelme_imps()
+        if self.__autosetup_backends:
+            self.setup_backends()
 
     def tearDown(self):
         super().tearDown()
-        if self.__auto_teardown_imps:
-            self.teardown_djelme_imps()
+        if self.__autoteardown_backends:
+            self.teardown_backends()
 
-    def setup_djelme_imps(self):
+    def setup_backends(self):
         # TODO: prefix index names, avoid collisions across test runs
         # get settings from elasticsearch_metrics.tests.settings.DJELME_BACKENDS
-        # self.teardown_djelme_imps()  # in case any already exist
+        # self.teardown_backends()  # in case any already exist
         for _backend in djelme_registry.each_backend():
-            _backend.setup_timeseries_indexes()
+            _backend.djelme_setup(
+                djelme_registry.each_recordtype(backend_name=_backend.backend_name)
+            )
 
-    def teardown_djelme_imps(self):
+    def teardown_backends(self):
         for _backend in djelme_registry.each_backend():
-            _backend.teardown_timeseries_indexes()
+            _backend.djelme_teardown(
+                djelme_registry.each_recordtype(backend_name=_backend.backend_name)
+            )
 
 
 class MockSaveTestCase(SimpleDjelmeTestCase):

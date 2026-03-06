@@ -17,16 +17,16 @@ class ElasticsearchMetricsConfig(AppConfig):
     def ready(self) -> None:
         # load backends settings
         _backend_names_by_module = collections.defaultdict(list)
-        for _backend_name, _imp_module_path, _imp_kwargs in _each_backend_setting():
-            _backend_names_by_module[_imp_module_path].append(_backend_name)
+        for _backend_name, _imp_module_name, _imp_kwargs in _each_backend_setting():
+            _backend_names_by_module[_imp_module_name].append(_backend_name)
             djelme_registry.register_backend(
-                _backend_name, _imp_module_path, _imp_kwargs
+                _backend_name, _imp_module_name, _imp_kwargs
             )
         # discover any `foo.metrics` in installed apps
         autodiscover_modules("metrics")
         # call `djelme_when_ready` on each imp module
-        for _imp_module_path, _backend_names in _backend_names_by_module.items():
-            _imp_module = djelme_registry.get_imp_module(_imp_module_path)
+        for _imp_module_name, _backend_names in _backend_names_by_module.items():
+            _imp_module = djelme_registry.get_imp_module(_imp_module_name)
             _imp_module.djelme_when_ready(
                 backends=[
                     djelme_registry.get_backend(_name) for _name in _backend_names
@@ -35,7 +35,9 @@ class ElasticsearchMetricsConfig(AppConfig):
         # autosetup? (default no)
         if getattr(settings, AUTOSETUP_SETTING, False) is True:
             for _backend in djelme_registry.each_backend():
-                _backend.setup_timeseries_indexes()
+                _backend.djelme_setup(
+                    djelme_registry.each_recordtype(backend_name=_backend.backend_name)
+                )
 
 
 ###
@@ -50,9 +52,9 @@ def _each_backend_setting() -> (
             raise ImproperlyConfigured(
                 BACKENDS_SETTING, "only one imp per backend, at the moment"
             )
-        for _imp_module_path, _imp_kwargs in _backend_imps.items():
+        for _imp_module_name, _imp_kwargs in _backend_imps.items():
             if not (
-                isinstance(_imp_module_path, str)
+                isinstance(_imp_module_name, str)
                 and isinstance(_imp_kwargs, dict)
                 and all(
                     isinstance(_k, str) and isinstance(_v, str)
@@ -63,4 +65,4 @@ def _each_backend_setting() -> (
                     BACKENDS_SETTING,
                     'expected {"mybackend": {"imp.path": {"imp_config": "..."}}}',
                 )
-            yield (_backend_name, _imp_module_path, _imp_kwargs)
+            yield (_backend_name, _imp_module_name, _imp_kwargs)

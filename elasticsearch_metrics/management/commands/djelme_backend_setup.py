@@ -1,6 +1,8 @@
+import itertools
+import operator
+
 from django.core.management.base import BaseCommand, CommandError
 
-from elasticsearch_metrics.apps import BACKENDS_SETTING
 from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.management.color import color_style
 
@@ -14,16 +16,11 @@ class Command(BaseCommand):
             nargs="?",
             help="App label of an application to synchronize the state.",
         )
-        parser.add_argument(
-            "--backend",
-            type=str,
-            help=f"name of a backend configured in settings.{BACKENDS_SETTING}",
-        )
 
     def handle(self, *args, **options):
         style = color_style()
-        _given_app_label = options["app_label"]
-        _backend_name = options["backend"]
+        _given_app_label = str(options["app_label"])
+        _given_backend_name = str(options["backend"])
         _app_labels: list[str]
         if _given_app_label:
             if _given_app_label not in djelme_registry.all_recordtypes:
@@ -31,23 +28,26 @@ class Command(BaseCommand):
             _app_labels = [_given_app_label]
         else:
             _app_labels = list(djelme_registry.all_recordtypes.keys())
-        if _backend_name:
-            self.stdout.write(f"Using djelme backend {_backend_name!r}")
-        _backends = (
-            [djelme_registry.get_backend(_backend_name)]
-            if _backend_name
-            else list(djelme_registry.each_backend())
-        )
-        for app_label in _app_labels:
+        for _app_label in _app_labels:
             self.stdout.write(
-                "Syncing recordtypes for app: '{}'".format(app_label),
+                "Syncing recordtypes for app: '{}'".format(_app_label),
                 style.MIGRATE_HEADING,
             )
-            for _backend in _backends:
-                for _recordtype in djelme_registry.each_recordtype(
-                    app_label=app_label, backend_name=_backend.backend_name
-                ):
+            # TODO: recordtype.backend_name removed
+            _namegetter = operator.attrgetter("backend_name")
+            for _backend_name, _each_recordtype in itertools.groupby(
+                sorted(
+                    djelme_registry.each_recordtype(app_label=_app_label),
+                    key=_namegetter,
+                ),
+                key=_namegetter,
+            ):
+                _recordtypes = list(_each_recordtype)
+                _using_backend = _given_backend_name or _backend_name
+                self.stdout.write(f"  Using backend {_using_backend!r}...")
+                _backend = djelme_registry.get_backend(_using_backend)
+                for _recordtype in _recordtypes:
                     self.stdout.write(f"  Setting up {_recordtype!r}...")
-                    _backend.setup_timeseries_indexes([_recordtype])
+                _backend.djelme_setup(_recordtypes)
 
         self.stdout.write("Synchronized recordtypes.", style.SUCCESS)

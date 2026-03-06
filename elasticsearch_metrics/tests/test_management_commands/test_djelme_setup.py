@@ -1,4 +1,6 @@
-from unittest import mock
+import unittest
+
+from django.core.management import CommandError
 
 from elasticsearch_metrics.management.commands import djelme_backend_setup
 from elasticsearch_metrics.imps import elastic6
@@ -7,14 +9,17 @@ from elasticsearch_metrics.tests._test_util import SimpleDjelmeTestCase
 
 
 class TestDjelmeSetup(SimpleDjelmeTestCase):
+    mock6_sync_index_template: unittest.mock.Mock
+    mock8_sync_index_template: unittest.mock.Mock
+
     def setUp(self):
         self.mock6_sync_index_template = self.enterContext(
-            mock.patch(
+            unittest.mock.patch(
                 "elasticsearch_metrics.imps.elastic6.Metric.sync_index_template"
             ),
         )
         self.mock8_sync_index_template = self.enterContext(
-            mock.patch(
+            unittest.mock.patch(
                 "elasticsearch_metrics.imps.elastic8.TimeseriesRecord.sync_index_template"
             ),
         )
@@ -29,8 +34,9 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
         assert "Synchronized recordtypes." in out
 
     def test_with_invalid_app(self):
-        out, err = self.run_mgmt_command(djelme_backend_setup, "notanapp")
-        assert "No recordtypes found for app 'notanapp'" in err
+        with self.assertRaises(CommandError) as _raises:
+            self.run_mgmt_command(djelme_backend_setup, "notanapp")
+        assert "No recordtypes found for app 'notanapp'" in str(_raises.exception)
 
     def test_with_app_label(self):
         class DummyMetric2(elastic6.Metric):
@@ -44,27 +50,29 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
         )
         assert _call_count == 1
 
-    def test_with_connection(self):
-        with self.settings(
-            DJELME_BACKENDS={
-                "my_old_elastic": {
-                    "elasticsearch_metrics.imps.elastic6": {"hosts": "localhost:9206"},
-                },
-                "my_lessold_elastic": {
-                    "elasticsearch_metrics.imps.elastic8": {"hosts": "localhost:9208"},
-                },
-            }
-        ):
-            _out1, _err1 = self.run_mgmt_command(
-                djelme_backend_setup, "--backend", "my_old_elastic"
-            )
-            _out2, _err2 = self.run_mgmt_command(
-                djelme_backend_setup, "--backend", "my_lessold_elastic"
-            )
-        _call1_kwargs = self.mock8_sync_index_template.call_args[1]
-        assert _call1_kwargs["using"] == "my_old_elastic"
-        assert "Using connection: 'my_old_elastic'" in _out1
+    def test_with_backend_es8_events(self):
+        _out, _err = self.run_mgmt_command(
+            djelme_backend_setup, "--backend", "my_elastic8_events"
+        )
+        self.mock6_sync_index_template.assert_not_called()
+        _call_kwargs = self.mock8_sync_index_template.call_args[1]
+        assert _call_kwargs["using"] == "my_elastic8_events"
+        assert "Using djelme backend 'my_elastic8_events'" in _out
 
-        _call2_kwargs = self.mock8_sync_index_template.call_args[2]
-        assert _call2_kwargs["using"] == "my_lessold_elastic"
-        assert "Using connection: 'my_lessold_elastic'" in _out2
+    def test_with_backend_es8_reports(self):
+        _out, _err = self.run_mgmt_command(
+            djelme_backend_setup, "--backend", "my_elastic8_reports"
+        )
+        self.mock6_sync_index_template.assert_not_called()
+        _call_kwargs = self.mock8_sync_index_template.call_args[1]
+        assert _call_kwargs["using"] == "my_elastic8_reports"
+        assert "Using djelme backend 'my_elastic8_reports'" in _out
+
+    def test_with_backend_es6(self):
+        _out, _err = self.run_mgmt_command(
+            djelme_backend_setup, "--backend", "my_elastic6"
+        )
+        self.mock8_sync_index_template.assert_not_called()
+        _call_kwargs = self.mock6_sync_index_template.call_args[1]
+        assert _call_kwargs["using"] == "my_elastic6"
+        assert "Using djelme backend 'my_elastic6'" in _out

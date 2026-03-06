@@ -66,7 +66,7 @@ class TestTimeseriesTypeRegistry(SimpleTestCase):
         )
 
         with self.assertRaises(LookupError) as excinfo:
-            list(djelme_registry.each_recordtype("notanapp"))
+            list(djelme_registry.each_recordtype(app_label="notanapp"))
         assert (
             "No recordtypes found in app with label 'notanapp'."
             in excinfo.exception.args[0]

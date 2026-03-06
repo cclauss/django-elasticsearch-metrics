@@ -12,6 +12,7 @@ _DEVLOOP_DJANGOTEST_ARGS = ("--failfast", "--pdb")
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--lint", action="store_true")  # _args.lint
 _parser.add_argument("--test", action="store_true")  # _args.test
+_parser.add_argument("--autofix", action="store_true")  # _args.autofix
 _parser.add_argument("-d", "--devloop", action="store_true")  # _args.devloop
 _parser.add_argument("-c", "--coverage", action="store_true")  # _args.coverage
 _parser.add_argument("passthru_test_args", nargs="*")
@@ -48,29 +49,43 @@ def run_lint() -> None:
     _run("poetry", "run", "mypy", "elasticsearch_metrics")
 
 
+def run_autofix() -> None:
+    _run("poetry", "run", "flake8", "--fix")
+    _run("poetry", "run", "black", ".")
+
+
+def _print_coverage_report() -> None:
+    _run(
+        "poetry",
+        "run",
+        "coverage",
+        "report",
+        "--skip-covered",
+        "--sort=-miss",
+        "--omit=elasticsearch_metrics/tests/__main__.py",
+        "--branch",
+        header="uncovered code",
+    )
+
+
 if __name__ == "__main__":
     _args = _parser.parse_args()
-    _run_all = not any((_args.test, _args.lint))
+    _yes_default = not any((_args.test, _args.lint, _args.autofix))
+    _yes_coverage = _args.coverage or _args.devloop
 
-    if _run_all or _args.test:
+    if _args.autofix:
+        run_autofix()
+
+    if _yes_default or _args.test:
         run_tests(
             passthru_test_args=(_DEVLOOP_DJANGOTEST_ARGS if _args.devloop else ()),
-            coverage=_args.coverage,
+            coverage=_yes_coverage,
         )
 
-    if _run_all or _args.lint:
+    if _yes_default or _args.lint:
         run_lint()
 
-    if _args.coverage:
-        _run(
-            "poetry",
-            "run",
-            "coverage",
-            "report",
-            "--skip-covered",
-            "--sort=-miss",
-            "--omit=elasticsearch_metrics/tests/__main__.py",
-            header="uncovered code",
-        )
+    if _yes_coverage:
+        _print_coverage_report()
 
     print("\n\n== all done ==")
