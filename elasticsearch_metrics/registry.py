@@ -135,11 +135,11 @@ class _DjelmeRegistry:
         return self.get_backend(self.get_default_backend_name(from_module_name))
 
     def get_default_backend_name(self, from_module_name: str) -> str:
-        self.all_backends[backend_name] = {imp_module_name: imp_kwargs}
         (_backend_name,) = (
             _backend.backend_name
             for _backend in self.each_backend()
-            if self._is_type_downstream_of_module(...
+            if self._is_type_downstream_of_module(...)  # TODO
+        )
         return _backend_name
 
     ###
