@@ -26,7 +26,7 @@ class TestCheckRecordtypes(SimpleDjelmeTestCase):
             )
         )
         with self.assertRaises(SystemExit):
-            self.run_mgmt_command(djelme_backend_check.Command)
+            self.run_mgmt_command(djelme_backend_check)
 
     def test_exits_with_error_if_out_of_sync_8(self):
         self.mock8_check_index_template.side_effect = (
@@ -35,12 +35,12 @@ class TestCheckRecordtypes(SimpleDjelmeTestCase):
             )
         )
         with self.assertRaises(SystemExit):
-            self.run_mgmt_command(djelme_backend_check.Command)
+            self.run_mgmt_command(djelme_backend_check)
 
     def test_exits_with_success(self):
         self.mock6_check_index_template.return_value = True
         self.mock8_check_index_template.return_value = True
-        self.run_mgmt_command(djelme_backend_check.Command)
+        self.run_mgmt_command(djelme_backend_check)
         _call_count = (
             self.mock6_check_index_template.call_count
             + self.mock8_check_index_template.call_count

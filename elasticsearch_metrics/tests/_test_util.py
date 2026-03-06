@@ -1,9 +1,10 @@
 from io import StringIO
 from unittest import mock
+import types
 import typing
 
 from django.core.management import call_command
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.test import SimpleTestCase
 
 from elasticsearch_metrics.registry import djelme_registry
@@ -13,28 +14,29 @@ class SimpleDjelmeTestCase(SimpleTestCase):
     """SimpleDjelmeTestCase: base test case with djelme-specific conveniences"""
 
     def enterContext(self, context_manager):
-        # TestCase.enterContext added in python3.11 -- implementing here until 3.10 eol
+        # unittest.TestCase.enterContext added in python3.11 -- implementing here until 3.10 eol
         result = context_manager.__enter__()
         self.addCleanup(lambda: context_manager.__exit__(None, None, None))
         return result
 
     def run_mgmt_command(
         self,
-        cmd: str | BaseCommand | type[BaseCommand],
+        cmd: str | BaseCommand | types.ModuleType,
         *args: str,
-        **options: str,
+        **options: str
     ) -> tuple[str, str]:
         """run a django management command, return (stdout, stderr) tuple
 
-        may be called with a command name or Command type/instance
+        wraps django.core.management.call_command to handle string-io and
+        also accept a management command module
         """
-        _cmd = cmd if isinstance(cmd, (str, BaseCommand)) else cmd()
+        _cmd = (
+            cmd.Command()
+            if isinstance(cmd, types.ModuleType)
+            else cmd
+        )
         _out, _err = StringIO(), StringIO()
-        try:
-            call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
-        except CommandError as _cmd_err:
-            return _out.getvalue(), "\n".join((_err.getvalue(), str(_cmd_err)))
-
+        call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
         return _out.getvalue(), _err.getvalue()
 
 

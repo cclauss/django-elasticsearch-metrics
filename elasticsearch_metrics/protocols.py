@@ -38,7 +38,7 @@ class ProtoTimeseriesRecord(typing.Protocol):
     def each_timeseries_index_status(cls) -> collections.abc.Iterable[str]: ...
 
     @classmethod
-    def check_timeseries_setup(cls, using=None):
+    def check_timeseries_setup(cls, using=None): ...
 
 
 @typing.runtime_checkable
@@ -56,3 +56,22 @@ class ProtoDjelmeImp(typing.Protocol):
         backends: collections.abc.Iterable[ProtoDjelmeBackend],
     ) -> None:
         """djelme_when_ready: recordtypes and djelme config loaded -- here's one of each backend"""
+
+
+class ProtoCountedUsage(typing.Protocol):
+    """
+    fields correspond to defined terms from COUNTER
+    https://cop5.projectcounter.org/en/5.0.2/appendices/a-glossary-of-terms.html
+    """
+
+    # counter:Platform
+    platform_iri: str
+    # counter:Database
+    database_iri: str
+    # counter:Session
+    sessionhour_id: str
+    # counter:Item
+    item_iri: str
+    # within_iris corresponds roughly to counter:Title, but as a more
+    # inclusive within/part-of/contained-by relationship
+    within_iris: list[str]

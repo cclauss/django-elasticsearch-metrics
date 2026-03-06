@@ -24,10 +24,7 @@ import typing
 
 import django
 from elasticsearch8.exceptions import NotFoundError
-from elasticsearch8 import (
-    Elasticsearch as Elastic8Client,
-    Connection as Elastic8Connection,
-)
+from elasticsearch8 import Elasticsearch as Elastic8Client
 from elasticsearch8.dsl import (
     Document,
     connections,
@@ -40,7 +37,7 @@ from elasticsearch8.dsl._sync.document import IndexMeta
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import djelme_registry
-from elasticsearch_metrics.protocols import ProtoDjelmeBackend
+from elasticsearch_metrics.protocols import ProtoDjelmeBackend, ProtoCountedUsage
 from elasticsearch_metrics.util import timeseries_naming
 from elasticsearch_metrics.util.unique_together import get_unique_id
 from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
@@ -51,8 +48,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEDEPTH = 2  # xxxx_xx_ (monthly)
 
 
-class _DjelmeRecordMeta(IndexMeta):
-    """Metaclass for the base `DjelmeRecord` class.
+class _DjelmeRecordtypeMetaclass(IndexMeta):
+    """Metaclass for the base `DjelmeRecordtype` class.
 
     overrides behavior in elasticsearch-py's `IndexMeta` to allow
     additional config in a type's `class Meta`
@@ -64,16 +61,19 @@ class _DjelmeRecordMeta(IndexMeta):
         _cls_meta = attrs.get("Meta") or type("Meta", (), {})
         # call IndexMeta.__new__
         _cls = super().__new__(mcls, name, bases, attrs)
-        # un-remove `class Meta`
+        # un-remove `class Meta` for later use
         if "Meta" in _cls.__dict__:
             for _attrname, _attrval in _cls_meta.__dict__.items():
                 if not hasattr(_cls.Meta, _attrname):
                     setattr(_cls.Meta, _attrname, _attrval)
         else:
-            _cls.Meta = _cls_meta
-
+            _cls.Meta = _cls_meta  # guarantee not a parent.Meta
         # change default mapping for `str` annotations from Text to Keyword
         _cls._doc_type.type_annotation_map[str] = (Keyword, {})
+        # workaround: elasticsearch.dsl inherits fields but not defaults
+        for _b in bases:
+            for _fieldname, _default in getattr(_b, "_defaults", {}).items():
+                _cls._defaults.setdefault(_fieldname, _default)
         # and register concrete record types with the djelme registry
         if not _cls.is_abstract:
             djelme_registry.register_recordtype(
@@ -94,10 +94,10 @@ class _DjelmeRecordMeta(IndexMeta):
         return djelme_registry.get_recordtype_app_label(self)
 
 
-class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
+class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
     """a subclass of elasticsearch8.dsl.Document, with conveniences
 
-    >>> class MyAbstractRecord(DjelmeRecord):
+    >>> class MyAbstractRecord(DjelmeRecordtype):
     ...     foo: int
     ...     class Meta:
     ...         abstract = True
@@ -186,9 +186,9 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
         )
 
 
-class TimeseriesRecord(DjelmeRecord):
+class TimeseriesRecord(DjelmeRecordtype):
     timestamp: datetime.datetime = mapped_field(
-        default_factory=django.utils.timezone.now
+        default_factory=lambda: django.utils.timezone.now()
     )
 
     class Meta:
@@ -285,9 +285,7 @@ class TimeseriesRecord(DjelmeRecord):
         return ret
 
     @classmethod
-    def sync_index_template(
-        cls, using: str | Elastic8Connection | None = None
-    ) -> ComposableIndexTemplate:
+    def sync_index_template(cls, using=None):  # -> ComposableIndexTemplate:
         """Sync the index template for this metric in Elasticsearch."""
         _template = cls.get_timeseries_template()
         signals.pre_index_template_create.send(
@@ -361,7 +359,24 @@ class TimeseriesRecord(DjelmeRecord):
 # TODO: EventRecord expiration
 # class EventRecord(TimeseriesRecord, ProtoExpirableRecord?):
 class EventRecord(TimeseriesRecord):
+
+    class Meta:
+        abstract = True
+
+
+# class CountedUsageRecord(EventRecord, ProtoCountedUsage):
+class CountedUsageRecord(EventRecord):
+    """
+    fields correspond to defined terms from COUNTER
+    https://cop5.projectcounter.org/en/5.0.2/appendices/a-glossary-of-terms.html
+    """
+
+    # for ProtoCountedUsage:
+    platform_iri: str
+    database_iri: str
     sessionhour_id: str = mapped_field(Keyword(), default="")
+    item_iri: str
+    within_iris: list[str] = mapped_field(Keyword(), default_factory=list)
 
     class Meta:
         abstract = True
@@ -379,6 +394,7 @@ class EventRecord(TimeseriesRecord):
         ) = None,  # or infer those from a django request
         **kwargs: typing.Any,
     ) -> typing.Self:
+        """CountedUsageRecord.record(...): construct and save a record"""
         _useragent = (
             request_useragent
             if (request_useragent or (django_request is None))
@@ -408,27 +424,14 @@ class EventRecord(TimeseriesRecord):
         return _new_record
 
 
-class CountedUsageRecord(EventRecord):
-    # fields correspond to defined terms from COUNTER
-    # https://cop5.projectcounter.org/en/5.0.2/appendices/a-glossary-of-terms.html
-
-    # inherited EventRecord.sessionhour_id corresponds to counter:Session
-
-    # counter:Platform
-    platform_iri: str
-    # counter:Database
-    database_iri: str
-    # counter:Item
-    item_iri: str
-    # within_iris corresponds roughly to counter:Title, but as a more
-    # inclusive within/part-of/contained-by relationship
-    within_iris: list[str] = mapped_field(Keyword(), default_factory=list)
-
-    class Meta:
-        abstract = True
+if __debug__:
+    # for static type-checking; verify intent
+    _: ProtoCountedUsage = CountedUsageRecord
 
 
 class CyclicRecord(TimeseriesRecord):
+    """CyclicRecord: for recording a measurement on a periodic basis"""
+
     covers_from: datetime.datetime
     covers_before: datetime.datetime
 
@@ -476,9 +479,9 @@ class DjelmeElastic8Backend:
             except NotFoundError:
                 pass
 
-    def _each_recordtype(self) -> collections.abc.Iterator[type[DjelmeRecord]]:
+    def _each_recordtype(self) -> collections.abc.Iterator[type[DjelmeRecordtype]]:
         for _type in djelme_registry.each_recordtype(backend_name=self.backend_name):
-            assert issubclass(_type, DjelmeRecord)
+            assert issubclass(_type, DjelmeRecordtype)
             yield _type
 
 

@@ -1,4 +1,4 @@
-from unittest import mock, skip
+from unittest import mock
 
 from elasticsearch_metrics.management.commands import djelme_backend_setup
 from elasticsearch_metrics.imps import elastic6
@@ -20,7 +20,7 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
         )
 
     def test_without_args(self):
-        out, err = self.run_mgmt_command(djelme_backend_setup.Command)
+        out, err = self.run_mgmt_command(djelme_backend_setup)
         _call_count = (
             self.mock6_sync_index_template.call_count
             + self.mock8_sync_index_template.call_count
@@ -29,7 +29,7 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
         assert "Synchronized recordtypes." in out
 
     def test_with_invalid_app(self):
-        out, err = self.run_mgmt_command(djelme_backend_setup.Command, "notanapp")
+        out, err = self.run_mgmt_command(djelme_backend_setup, "notanapp")
         assert "No recordtypes found for app 'notanapp'" in err
 
     def test_with_app_label(self):
@@ -37,28 +37,34 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
             class Meta:
                 app_label = "dummyapp2"
 
-        out, err = self.run_mgmt_command(djelme_backend_setup.Command, "dummyapp2")
+        out, err = self.run_mgmt_command(djelme_backend_setup, "dummyapp2")
         _call_count = (
             self.mock6_sync_index_template.call_count
             + self.mock8_sync_index_template.call_count
         )
         assert _call_count == 1
 
-    @skip("TODO: connection selection")
     def test_with_connection(self):
-        self.settings.DJELME_BACKENDS = {
-            "default": [
-                "elasticsearch_metrics.imps.elastic6",
-                {"hosts": "localhost:9201"},
-            ],
-            "alternate": [
-                "elasticsearch_metrics.imps.elastic8",
-                {"hosts": "localhost:9202"},
-            ],
-        }
-        out, err = self.run_mgmt_command(
-            djelme_backend_setup.Command, "--connection", "alternate"
-        )
-        call_kwargs = self.mock_sync_index_template.call_args[1]
-        assert call_kwargs["using"] == "alternate"
-        assert "Using connection: 'alternate'" in out
+        with self.settings(
+            DJELME_BACKENDS={
+                "my_old_elastic": {
+                    "elasticsearch_metrics.imps.elastic6": {"hosts": "localhost:9206"},
+                },
+                "my_lessold_elastic": {
+                    "elasticsearch_metrics.imps.elastic8": {"hosts": "localhost:9208"},
+                },
+            }
+        ):
+            _out1, _err1 = self.run_mgmt_command(
+                djelme_backend_setup, "--backend", "my_old_elastic"
+            )
+            _out2, _err2 = self.run_mgmt_command(
+                djelme_backend_setup, "--backend", "my_lessold_elastic"
+            )
+        _call1_kwargs = self.mock8_sync_index_template.call_args[1]
+        assert _call1_kwargs["using"] == "my_old_elastic"
+        assert "Using connection: 'my_old_elastic'" in _out1
+
+        _call2_kwargs = self.mock8_sync_index_template.call_args[2]
+        assert _call2_kwargs["using"] == "my_lessold_elastic"
+        assert "Using connection: 'my_lessold_elastic'" in _out2

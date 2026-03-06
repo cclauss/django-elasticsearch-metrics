@@ -104,10 +104,7 @@ class _DjelmeRegistry:
             for _app_label, _types in self.all_recordtypes.items()
             if _types.get(recordtype.__name__.lower()) is recordtype
         )
-        _res = next(_each_matching_app_label, None)
-        if not _res:
-            breakpoint()
-        return _res
+        return next(_each_matching_app_label, None)
 
     def get_backend(
         self, backend_name: str, namespace_prefix: str = ""

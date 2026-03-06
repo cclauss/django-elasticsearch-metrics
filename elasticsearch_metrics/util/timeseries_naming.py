@@ -23,6 +23,7 @@ import itertools
 _DELIMITER: str = "_"
 _TIMEPART_MIN_LEN: int = 2
 _TEMPLATE_NAME_SUFFIX = "_template"
+_MAX_INDEXPATTERN_COMMAS: int = 5
 
 
 TimeseriesIndexNamePattern = tuple[str, str, tuple[int, ...]]
@@ -77,11 +78,43 @@ def format_index_pattern(
     return f"{format_index_name(prefix, recordtype, timeparts)}*"
 
 
+def _each_timeparts_for_timerange(
+    from_timeparts: collections.abc.Sequence[int],
+    thru_timeparts: collections.abc.Sequence[int],
+    max_timedepth: int,
+) -> collections.abc.Generator[tuple[int, ...]]:
+    """
+    yield timeparts to cover the given timerange (in no particular order)
+
+    >>> sorted(_each_timeparts_for_timerange((1999, 2), (1999, 3))
+    >>> sorted(_each_timeparts_for_timerange((1999, 2), (1999, 11))
+    >>> sorted(_each_timeparts_for_timerange((1999, 2), (2000, 11))
+    >>> sorted(_each_timeparts_for_timerange((1999, 2), (2002, 11))
+    >>> sorted(_each_timeparts_for_timerange((1999,), (2002,))
+    >>> sorted(_each_timeparts_for_timerange((1999, 27, 17, 0, 3), (1999, 27, 17, 0, 223,))
+    >>> sorted(_each_timeparts_for_timerange((1999, 27, 17, 0, 3), (2002, 117, 17, 0, 3))
+    """
+    for _frompart, _untilpart in itertools.islice(
+        zip(from_timeparts, thru_timeparts, strict=False),
+        max_timedepth,  # stop at max depth
+    ):
+        if _untilpart == _frompart:
+            yield (_untilpart,)
+            for _restparts in _each_timeparts_for_timerange(
+                from_timeparts[1:], thru_timeparts[1:], max_timedepth - 1
+            ):
+                yield (_untilpart, *_restparts)
+        elif (_untilpart - _frompart) <= _MAX_INDEXPATTERN_COMMAS:  # not too far apart
+            ...
+        else:  # too far apart
+            ...
+
+
 def format_index_pattern_for_timerange(
     prefix: str,
     recordtype: str,
     from_timeparts: collections.abc.Iterable[int],
-    until_timeparts: collections.abc.Iterable[int],
+    thru_timeparts: collections.abc.Iterable[int],
     max_timedepth: int,
 ) -> str:
     """get an index-name pattern for all indexes within a timepart range
@@ -97,7 +130,7 @@ def format_index_pattern_for_timerange(
     return format_index_pattern(
         prefix,
         recordtype,
-        _timerange_part_overlap(from_timeparts, until_timeparts, max_timedepth),
+        _timerange_part_overlap(from_timeparts, thru_timeparts, max_timedepth),
     )
 
 
@@ -105,7 +138,7 @@ def format_index_pattern_for_daterange(
     prefix: str,
     recordtype: str,
     from_date: datetime.date,
-    until_date: datetime.date,
+    thru_date: datetime.date,
     max_timedepth: int,
 ) -> str:
     """get an index-name pattern for all indexes within a date range
@@ -118,7 +151,7 @@ def format_index_pattern_for_daterange(
         prefix,
         recordtype,
         _each_timepart_from_date(from_date),
-        _each_timepart_from_date(until_date),
+        _each_timepart_from_date(thru_date),
         max_timedepth,
     )
 

@@ -45,7 +45,7 @@ def _run(*args: str, header: str = "") -> None:
 def run_lint() -> None:
     _run("poetry", "run", "flake8")
     _run("poetry", "run", "black", "--check", ".")
-    # TODO: mypy?
+    _run("poetry", "run", "mypy", "elasticsearch_metrics")
 
 
 if __name__ == "__main__":

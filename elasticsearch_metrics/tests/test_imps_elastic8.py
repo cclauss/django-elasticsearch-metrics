@@ -3,6 +3,7 @@ import datetime as dt
 
 from django.utils import timezone
 
+import elasticsearch8
 from elasticsearch8.dsl import (
     Keyword,
     ComposableIndexTemplate,
@@ -27,6 +28,12 @@ from elasticsearch_metrics.tests.dummy8app.metrics import (
     ThingHappened,
     ThingHappeningsReport,
 )
+
+
+def _es8_client(backend_name: str = "my_elastic8_events") -> elasticsearch8.Elasticsearch:
+    _backend = djelme_registry.get_backend(backend_name)
+    assert isinstance(_backend, djelme.DjelmeElastic8Backend)
+    return _backend.elastic8_client
 
 
 class TestFormatIndexName(SimpleDjelmeTestCase):
@@ -217,10 +224,6 @@ class TestSignals(MockSaveTestCase):
 
 
 class TestCreateDocument(RealElasticTestCase):
-    @property
-    def es8_client(self):
-        return djelme_registry.get_backend("my_elastic8_events").elastic8_client
-
     def test_create_document(self):
         _thing_id = "12345"
         _happen_code = "zyxwv"
@@ -236,7 +239,7 @@ class TestCreateDocument(RealElasticTestCase):
 
         # index mappings should match the index template
         name = _doc.timeseries_index_name
-        mapping = self.es8_client.indices.get_mapping(index=name)
+        mapping = _es8_client().indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}
@@ -244,14 +247,10 @@ class TestCreateDocument(RealElasticTestCase):
 
 
 class TestInit(RealElasticTestCase, auto_setup_imps=False):
-    @property
-    def es8_client(self):
-        return djelme_registry.get_backend("my_elastic8_events").elastic8_client
-
     def test_init(self):
         ThingHappened.init()
         name = ThingHappened.format_timeseries_index_name()
-        mapping = self.es8_client.indices.get_mapping(index=name)
+        mapping = _es8_client().indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}

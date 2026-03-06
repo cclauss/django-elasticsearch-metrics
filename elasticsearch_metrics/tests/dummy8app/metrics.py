@@ -26,10 +26,10 @@ class Dummy8EventWithExplicitNamePrefix(djelme.EventRecord):
 
 
 class ThingHappened(djelme.EventRecord):
-    thing_id: str = ''
-    happen_code: str = ''
-    dot_path: str = mapped_field(Text(analyzer=dot_path_analyzer), default='')
-    commentary: str = mapped_field(Text(), default='')
+    thing_id: str = ""
+    happen_code: str = ""
+    dot_path: str | None = mapped_field(Text(analyzer=dot_path_analyzer), default=None)
+    commentary: str | None = mapped_field(Text(), default=None)
 
     class Index:
         settings = {"refresh_interval": "-1"}
