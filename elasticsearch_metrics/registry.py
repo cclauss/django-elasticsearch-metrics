@@ -183,7 +183,7 @@ class _DjelmeRegistry:
         apps.check_apps_ready()  # ensure django setup done
         _app_labels = [app_label] if app_label else self.all_recordtypes.keys()
         for _app_label in _app_labels:
-            for _recordtype in self.all_recordtypes[_app_label].values():
+            for _recordtype in self._get_recordtypes_for_app(_app_label).values():
                 yield _recordtype
 
     def each_backend_name(

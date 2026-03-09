@@ -9,9 +9,7 @@ from elasticsearch_metrics.tests._test_util import SimpleDjelmeTestCase
 class TestCheckRecordtypes(SimpleDjelmeTestCase):
     def setUp(self):
         self.mock6_check_djelme_setup = self.enterContext(
-            mock.patch(
-                "elasticsearch_metrics.imps.elastic6.Metric.check_djelme_setup"
-            ),
+            mock.patch("elasticsearch_metrics.imps.elastic6.Metric.check_djelme_setup"),
         )
         self.mock8_check_djelme_setup = self.enterContext(
             mock.patch(

@@ -58,7 +58,7 @@ def format_index_name_for_date(
     timedepth: int,
 ) -> str:
     """get a full/specific index name, no wildcards or lists
-    >>> format_index_name_for_date(datetime.date(9876,5,4), 'aoeu', 'mynote', timedepth=2)
+    >>> format_index_name_for_date(datetime.date(9876,5,4), prefix='aoeu', recordtype='mynote', timedepth=2)
     'aoeu_mynote_9876_05_'
     """
     return format_index_name(
@@ -78,36 +78,39 @@ def format_index_pattern(
     return f"{format_index_name(prefix, recordtype, timeparts)}*"
 
 
-def _each_timeparts_for_timerange(
-    from_timeparts: collections.abc.Sequence[int],
-    thru_timeparts: collections.abc.Sequence[int],
-    max_timedepth: int,
-) -> collections.abc.Generator[tuple[int, ...]]:
-    """
-    yield timeparts to cover the given timerange (in no particular order)
-
-    >>> sorted(_each_timeparts_for_timerange((1999, 2), (1999, 3))
-    >>> sorted(_each_timeparts_for_timerange((1999, 2), (1999, 11))
-    >>> sorted(_each_timeparts_for_timerange((1999, 2), (2000, 11))
-    >>> sorted(_each_timeparts_for_timerange((1999, 2), (2002, 11))
-    >>> sorted(_each_timeparts_for_timerange((1999,), (2002,))
-    >>> sorted(_each_timeparts_for_timerange((1999, 27, 17, 0, 3), (1999, 27, 17, 0, 223,))
-    >>> sorted(_each_timeparts_for_timerange((1999, 27, 17, 0, 3), (2002, 117, 17, 0, 3))
-    """
-    for _frompart, _untilpart in itertools.islice(
-        zip(from_timeparts, thru_timeparts, strict=False),
-        max_timedepth,  # stop at max depth
-    ):
-        if _untilpart == _frompart:
-            yield (_untilpart,)
-            for _restparts in _each_timeparts_for_timerange(
-                from_timeparts[1:], thru_timeparts[1:], max_timedepth - 1
-            ):
-                yield (_untilpart, *_restparts)
-        elif (_untilpart - _frompart) <= _MAX_INDEXPATTERN_COMMAS:  # not too far apart
-            ...
-        else:  # too far apart
-            ...
+# def _each_timeparts_for_timerange(
+#     from_timeparts: collections.abc.Sequence[int],
+#     thru_timeparts: collections.abc.Sequence[int],
+#     max_timedepth: int,
+# ) -> collections.abc.Generator[tuple[int, ...]]:
+#     """
+#     yield timeparts to cover the given timerange (in no particular order)
+#
+#     >>> sorted(_each_timeparts_for_timerange((1999, 2), (1999, 3), max_timedepth=1))
+#     [(1999,)]
+#     >>> sorted(_each_timeparts_for_timerange((1999, 2), (1999, 11)))
+#     >>> sorted(_each_timeparts_for_timerange((1999, 2), (2000, 11)))
+#     >>> sorted(_each_timeparts_for_timerange((1999, 2), (2002, 11)))
+#     >>> sorted(_each_timeparts_for_timerange((1999,), (2002,)))
+#     >>> sorted(_each_timeparts_for_timerange((1999, 27, 17, 0, 3), (1999, 27, 17, 0, 223,)))
+#     >>> sorted(_each_timeparts_for_timerange((1999, 27, 17, 0, 3), (2002, 117, 17, 0, 3)))
+#     """
+#     for _frompart, _untilpart in itertools.islice(
+#         zip(from_timeparts, thru_timeparts, strict=False),
+#         max_timedepth,  # stop at max depth
+#     ):
+#         if _untilpart == _frompart:  # shared part
+#             yield (_untilpart,)
+#             for _restparts in _each_timeparts_for_timerange(
+#                 from_timeparts[1:], thru_timeparts[1:], max_timedepth - 1
+#             ):
+#                 yield from itertools.chain([_untilpart], _restparts)
+#         elif (_untilpart - _frompart) <= _MAX_INDEXPATTERN_COMMAS:  # not too far apart
+#             for _commadpart in range(_frompart, _untilpart):
+#                 yield from ...
+#             ...
+#         else:  # too far apart
+#             ...
 
 
 def format_index_pattern_for_timerange(
@@ -118,12 +121,12 @@ def format_index_pattern_for_timerange(
     max_timedepth: int,
 ) -> str:
     """get an index-name pattern for all indexes within a timepart range
-    >>> format_index_pattern_for_daterange('aoeu', 'mynote',
-    ...     (5020, 02, 02), (5020, 02, 20),
+    >>> format_index_pattern_for_timerange('aoeu', 'mynote',
+    ...     (5020, 2, 2), (5020, 2, 20),
     ...     max_timedepth=2)
     'aoeu_mynote_5020_02_*'
-    >>> format_index_pattern_for_daterange('aoeu', 'mynote',
-    ...     (5020, 02, 02), (5020, 12, 20),
+    >>> format_index_pattern_for_timerange('aoeu', 'mynote',
+    ...     (5020, 2, 2), (5020, 12, 20),
     ...     max_timedepth=2)
     'aoeu_mynote_5020_*'
     """
@@ -143,7 +146,7 @@ def format_index_pattern_for_daterange(
 ) -> str:
     """get an index-name pattern for all indexes within a date range
     >>> format_index_pattern_for_daterange('aoeu', 'mynote',
-    ...     datetime.date(2050, 05, 05), datetime.date(2050, 05, 08),
+    ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
     ...     max_timedepth=2)
     'aoeu_mynote_2050_05_*'
     """

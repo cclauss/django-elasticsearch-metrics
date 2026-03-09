@@ -17,7 +17,9 @@ def opaque_key(
     positional args: non-None, str-able things to hash
 
     >>> opaque_key(['hello'])
+    'V0`d<8NsX5UQjv_YK_fD+9!nr;^?`WvJ%~vB<}v4=Gsk7VRO#CB5!jR?223lNbvbOIvX_7sNpXimPncE'
     >>> opaque_key(['hello', 'hello', 'hello'])
+    '*58u_=`?3#G!N(%j!3kqU7#Npt>Xvj=|3<75BRoi$0j;F-*3V+Cc?P1FvcVW76T_`5^NaI*_3787SsBn'
     """
     _plain_key = json.dumps([str(_part) for _part in key_parts])
     return base64.b85encode(
@@ -62,11 +64,11 @@ __test__ = {
 >>> _now_patcher = patch('django.utils.timezone.now', return_value=datetime.datetime(1234, 5, 6, 7))
 >>> _now_patcher.start() and None
 >>> opaque_sessionhour_id(client_session_id='foo')
-'962bc7704445a68df301da544869719b3d892a50fe74972b59b106c983dd7379'
+'R26L*vmd?|G}S5AZ}ONXq>^B*T-!TLCE`uboEXF-LpK8Hysi$nUve^2aG~PTWiX<6BDv}wQtowotKSdV'
 >>> opaque_sessionhour_id(client_session_id='feh', user_id='blah')
-'d16d70b136c623da4832057cc5493d15246d379d21d4536be204402e4155d29c'
+'JfeGFBfil1y$8fnmhi)8LU4}9vUBX6VfHmDPiVfiB~0nT&%3tKWsTTF_z2wynPj}`EF=}Y6=?}e5nDK0'
 >>> opaque_sessionhour_id(request_host='999.999.999.999', request_useragent='hehe')
-'109cf42215e26373a8977dcb7439b2b32a9797cfc5d6d1c6e5168cbb8dde6acd'
+'Q^-x^v~@WQRHrWsbbji+pNmz)1`sp3SywCJ4n`W_aoY0tfbL6byxqUpw#DXoqU3>DtZC*^D@qjc7EmO='
 >>> _now_patcher.stop() or None
 """,
 }

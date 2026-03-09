@@ -43,6 +43,7 @@ class SimpleChainMap[K, V](Mapping[K, V]):
     >>> _map.with_new({'a': 17}).get('a')
     17
     """
+
     maps: Sequence[Mapping[K, V]]
 
     def __getitem__(self, key: K) -> V:
@@ -54,7 +55,7 @@ class SimpleChainMap[K, V](Mapping[K, V]):
         raise KeyError(key)
 
     def __iter__(self) -> Iterator[K]:
-        _seen: set = set()
+        _seen: set[K] = set()
         for _mapping in self.maps:
             for _key in _mapping.keys():
                 if _key not in _seen:

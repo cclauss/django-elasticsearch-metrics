@@ -16,7 +16,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         style = color_style()
-        _given_app_label = str(options["app_label"])
+        _given_app_label: str | None = options["app_label"]
         _app_labels: list[str]
         if _given_app_label:
             if _given_app_label not in djelme_registry.all_recordtypes:
@@ -29,7 +29,10 @@ class Command(BaseCommand):
                 "Syncing recordtypes for app: '{}'".format(_app_label),
                 style.MIGRATE_HEADING,
             )
-            for _backend_name, _recordtypes in djelme_registry.each_recordtype_by_backend(_app_label):
+            for (
+                _backend_name,
+                _recordtypes,
+            ) in djelme_registry.each_recordtype_by_backend(_app_label):
                 _backend = djelme_registry.get_backend(_backend_name)
                 self.stdout.write(f"  Using backend {_backend.backend_name!r}...")
                 for _recordtype in _recordtypes:
