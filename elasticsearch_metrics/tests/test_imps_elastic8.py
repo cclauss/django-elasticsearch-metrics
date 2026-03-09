@@ -30,7 +30,9 @@ from elasticsearch_metrics.tests.dummy8app.metrics import (
 )
 
 
-def _es8_client(backend_name: str = "my_elastic8_events") -> elasticsearch8.Elasticsearch:
+def _es8_client(
+    backend_name: str = "my_elastic8_events",
+) -> elasticsearch8.Elasticsearch:
     _backend = djelme_registry.get_backend(backend_name)
     assert isinstance(_backend, djelme.DjelmeElastic8Backend)
     return _backend.elastic8_client
@@ -116,7 +118,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_get_index_template_uses_app_label_in_class_meta(self):
         class MyRecord(djelme.TimeseriesRecord):
             class Index:
-                using = 'my_elastic8_events'
+                using = "my_elastic8_events"
 
             class Meta:
                 app_label = "myapp"
@@ -139,7 +141,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
             class Index:
                 settings = {"number_of_shards": 2}
-                using = 'my_elastic8_events'
+                using = "my_elastic8_events"
 
             class Meta:
                 abstract = True
@@ -155,7 +157,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
     def test_source_may_be_enabled(self):
         class MyRecord(djelme.TimeseriesRecord):
             class Index:
-                using = 'my_elastic8_events'
+                using = "my_elastic8_events"
 
             class Meta:
                 app_label = "dummy8app"
