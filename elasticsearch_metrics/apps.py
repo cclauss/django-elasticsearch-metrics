@@ -34,10 +34,8 @@ class ElasticsearchMetricsConfig(AppConfig):
             )
         # autosetup? (default no)
         if getattr(settings, AUTOSETUP_SETTING, False) is True:
-            for _backend in djelme_registry.each_backend():
-                _backend.djelme_setup(
-                    djelme_registry.each_recordtype(backend_name=_backend.backend_name)
-                )
+            for _backend_name, _recordtypes in djelme_registry.each_recordtype_by_backend():
+                djelme_registry.get_backend(_backend_name).djelme_setup(_recordtypes)
 
 
 ###

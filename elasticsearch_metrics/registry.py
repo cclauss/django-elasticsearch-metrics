@@ -37,6 +37,14 @@ class _DjelmeRegistry:
             lambda: weakref.WeakValueDictionary[str, type]()
         )
     )
+    _imp_by_recordtype: collections.abc.MutableMapping[type, str] = dataclasses.field(
+        default_factory=lambda: weakref.WeakKeyDictionary[type, str]()
+    )
+    _default_backend_name_by_recordtype: collections.abc.MutableMapping[type, str] = (
+        dataclasses.field(
+            default_factory=lambda: weakref.WeakKeyDictionary[type, str]()
+        )
+    )
 
     # nested mapping from backend_name => imp_module_name => imp backend config dictionary
     # (note, only one imp module allowed per backend (for now))
@@ -58,7 +66,9 @@ class _DjelmeRegistry:
         self,
         recordtype: type[ProtoDjelmeRecord],
         *,
+        imp_module_name: str,
         app_label: str = "",
+        default_backend: str = "",
     ) -> None:
         """Add a record type to the registry."""
         _app_label = app_label or find_app_label_for_type(recordtype)
@@ -75,6 +85,9 @@ class _DjelmeRegistry:
                 )
             )
         app_recordtypes[recordtype_name] = recordtype
+        self._imp_by_recordtype[recordtype] = imp_module_name
+        if default_backend and (default_backend != "default"):
+            self._default_backend_name_by_recordtype[recordtype] = default_backend
 
     ###
     # `get` methods: for accessing specific items in the registry
@@ -131,15 +144,31 @@ class _DjelmeRegistry:
             _to_import = _registered_module_name
         return _import_imp_module(_to_import)
 
-    def get_default_backend(self, from_module_name: str) -> ProtoDjelmeBackend:
-        return self.get_backend(self.get_default_backend_name(from_module_name))
+    def get_backend_for_recordtype(
+        self, recordtype: type[ProtoDjelmeRecord]
+    ) -> ProtoDjelmeBackend:
+        return self.get_backend(self.get_backend_name_for_recordtype(recordtype))
 
-    def get_default_backend_name(self, from_module_name: str) -> str:
-        (_backend_name,) = (
-            _backend.backend_name
-            for _backend in self.each_backend()
-            if self._is_type_downstream_of_module(...)  # TODO
-        )
+    def get_backend_name_for_recordtype(
+        self, recordtype: type[ProtoDjelmeRecord]
+    ) -> str:
+        _backend_name = self._default_backend_name_by_recordtype.get(recordtype)
+        if _backend_name:
+            return _backend_name
+        _imp_name = self._imp_by_recordtype.get(recordtype)
+        if not _imp_name:
+            raise LookupError(f"no imp for recordtype {recordtype!r}?")
+        _each_backend_name = self.each_backend_name(imp_module_name=_imp_name)
+        try:
+            (_backend_name,) = _each_backend_name
+        except StopIteration as _e:  # no backends
+            breakpoint()
+            raise LookupError(f"no backends for recordtype {recordtype!r}") from _e
+        except ValueError as _e:  # too many backends
+            breakpoint()
+            raise LookupError(
+                f"more than one backend for recordtype {recordtype!r}, must be set explicitly"
+            ) from _e
         return _backend_name
 
     ###
@@ -177,6 +206,22 @@ class _DjelmeRegistry:
 
     def each_app_label(self) -> collections.abc.Iterable[str]:
         yield from self.all_recordtypes.keys()
+
+    def each_recordtype_by_backend(
+        self, app_label: str = ""
+    ) -> collections.abc.Iterator[
+        tuple[str, collections.abc.Iterable[type[ProtoDjelmeRecord]]]
+    ]:
+        apps.check_apps_ready()  # ensure django setup done
+        _by_backend_name: dict[str, list[type[ProtoDjelmeRecord]]] = (
+            collections.defaultdict(list)
+        )
+        _app_labels = [app_label] if app_label else self.all_recordtypes.keys()
+        for _app_label in _app_labels:
+            for _recordtype in self.all_recordtypes[_app_label].values():
+                _backend_name = self.get_backend_name_for_recordtype(_recordtype)
+                _by_backend_name[_backend_name].append(_recordtype)
+        yield from _by_backend_name.items()
 
     ###
     # private methods

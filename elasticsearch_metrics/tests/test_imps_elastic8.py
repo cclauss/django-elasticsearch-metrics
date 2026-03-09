@@ -115,6 +115,9 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_get_index_template_uses_app_label_in_class_meta(self):
         class MyRecord(djelme.TimeseriesRecord):
+            class Index:
+                using = 'my_elastic8_events'
+
             class Meta:
                 app_label = "myapp"
 
@@ -136,6 +139,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
             class Index:
                 settings = {"number_of_shards": 2}
+                using = 'my_elastic8_events'
 
             class Meta:
                 abstract = True
@@ -150,6 +154,9 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_source_may_be_enabled(self):
         class MyRecord(djelme.TimeseriesRecord):
+            class Index:
+                using = 'my_elastic8_events'
+
             class Meta:
                 app_label = "dummy8app"
                 timeseries_recordtype_name = "myrecord"

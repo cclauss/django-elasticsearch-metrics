@@ -98,7 +98,12 @@ class MetricMeta(IndexMeta):
         # Abstract base metrics can't be instantiated and don't appear in
         # the list of metrics for an app.
         if not abstract:
-            djelme_registry.register_recordtype(new_cls, app_label=app_label)
+            djelme_registry.register_recordtype(
+                new_cls,
+                imp_module_name=__name__,
+                app_label=app_label,
+                default_backend=new_cls._index._using or "",
+            )
         return new_cls
 
     # Override IndexMeta.construct_index so that

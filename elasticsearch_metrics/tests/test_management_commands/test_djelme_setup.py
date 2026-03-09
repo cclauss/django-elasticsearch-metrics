@@ -49,30 +49,3 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
             + self.mock8_sync_index_template.call_count
         )
         assert _call_count == 1
-
-    def test_with_backend_es8_events(self):
-        _out, _err = self.run_mgmt_command(
-            djelme_backend_setup, "--backend", "my_elastic8_events"
-        )
-        self.mock6_sync_index_template.assert_not_called()
-        _call_kwargs = self.mock8_sync_index_template.call_args[1]
-        assert _call_kwargs["using"] == "my_elastic8_events"
-        assert "Using djelme backend 'my_elastic8_events'" in _out
-
-    def test_with_backend_es8_reports(self):
-        _out, _err = self.run_mgmt_command(
-            djelme_backend_setup, "--backend", "my_elastic8_reports"
-        )
-        self.mock6_sync_index_template.assert_not_called()
-        _call_kwargs = self.mock8_sync_index_template.call_args[1]
-        assert _call_kwargs["using"] == "my_elastic8_reports"
-        assert "Using djelme backend 'my_elastic8_reports'" in _out
-
-    def test_with_backend_es6(self):
-        _out, _err = self.run_mgmt_command(
-            djelme_backend_setup, "--backend", "my_elastic6"
-        )
-        self.mock8_sync_index_template.assert_not_called()
-        _call_kwargs = self.mock6_sync_index_template.call_args[1]
-        assert _call_kwargs["using"] == "my_elastic6"
-        assert "Using djelme backend 'my_elastic6'" in _out

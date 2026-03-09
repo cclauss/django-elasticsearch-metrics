@@ -77,7 +77,10 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
         # and register concrete record types with the djelme registry
         if not _cls.is_abstract:
             djelme_registry.register_recordtype(
-                _cls, app_label=_cls._get_meta_attr("app_label", None)
+                _cls,
+                imp_module_name=__name__,
+                app_label=_cls._get_meta_attr("app_label", None),
+                default_backend=_cls._index._using or "",
             )
         return _cls
 
@@ -142,9 +145,9 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
         getting connection name from a djelme backend and default
         to the first configured backend that uses this imp module
         """
-        _backend = None
+        _backend: ProtoDjelmeBackend | None = None
         if using in (None, "default"):
-            _backend = djelme_registry.get_default_backend(__name__)
+            _backend = djelme_registry.get_backend_for_recordtype(cls)
         elif isinstance(using, str) and (using in djelme_registry.all_backends):
             _backend = djelme_registry.get_backend(using)
         if _backend is not None:
@@ -480,7 +483,7 @@ class DjelmeElastic8Backend:
     def djelme_teardown(self, recordtypes: collections.abc.Iterable[type]) -> None:
         # for ProtoDjelmeBackend
         for _recordtype in recordtypes:
-            assert isinstance(_recordtype, DjelmeRecordtype)
+            assert issubclass(_recordtype, DjelmeRecordtype)
             _recordtype._djelme_teardown(self.elastic8_client)
 
 
