@@ -28,7 +28,10 @@ class ProtoDjelmeBackend(typing.Protocol):
 
 class ProtoDjelmeRecord(typing.Protocol):
     @classmethod
-    def record(cls, **kwargs: typing.Any) -> typing.Self: ...
+    def record(
+        cls, **kwargs: typing.Any
+    ) -> "typing.Self":  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
+        ...
 
     # @classmethod
     # def each_timeseries_index_status(cls) -> collections.abc.Iterable[str]: ...

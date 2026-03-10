@@ -411,7 +411,7 @@ class CountedUsageRecord(EventRecord):
             django.http.HttpRequest | None
         ) = None,  # or infer those from a django request
         **kwargs: typing.Any,
-    ) -> typing.Self:
+    ) -> "typing.Self":  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
         """CountedUsageRecord.record(...): construct and save a record"""
         _useragent = (
             request_useragent
