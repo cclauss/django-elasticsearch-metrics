@@ -392,8 +392,8 @@ class CountedUsageRecord(EventRecord):
     # for ProtoCountedUsage:
     platform_iri: str
     database_iri: str
-    sessionhour_id: str = mapped_field(Keyword(), default="")
     item_iri: str
+    sessionhour_id: str = mapped_field(Keyword(), default="")
     within_iris: list[str] = mapped_field(Keyword(), default_factory=list)
 
     class Meta:
