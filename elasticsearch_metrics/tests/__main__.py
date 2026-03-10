@@ -64,7 +64,6 @@ def _print_coverage_report() -> None:
         "--skip-covered",
         "--sort=-miss",
         "--omit=elasticsearch_metrics/tests/__main__.py",
-        "--branch",
         header="uncovered code",
     )
 
