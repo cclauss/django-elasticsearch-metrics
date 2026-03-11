@@ -3,6 +3,7 @@
 consider this code frozen/deprecated -- will be removed once no longer needed
 """
 
+from __future__ import annotations
 import collections
 from collections.abc import Iterator
 import dataclasses
@@ -13,10 +14,12 @@ from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch6.exceptions import NotFoundError
-import elasticsearch6_dsl
 from elasticsearch6_dsl import Document, connections, Date
 from elasticsearch6_dsl.document import IndexMeta, MetaField
 from elasticsearch6_dsl.index import Index
+
+# re-export all fields, for back-compat convenience
+from elasticsearch6_dsl.field import *  # noqa: F40
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
@@ -26,8 +29,6 @@ from elasticsearch_metrics.registry import djelme_registry
 DEFAULT_DATE_FORMAT = "%Y.%m.%d"
 
 logger = logging.getLogger(__name__)
-
-fields = elasticsearch6_dsl.field
 
 
 class ReadonlyAttrMap:

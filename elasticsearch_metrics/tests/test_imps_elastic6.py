@@ -34,10 +34,10 @@ route_prefix_analyzer = analyzer(
 
 
 class PreprintView(elastic6.Metric):
-    provider_id = elastic6.fields.Keyword(index=True)
-    page_id = elastic6.fields.Keyword(index=True)
-    preprint_id = elastic6.fields.Keyword(index=True)
-    route_name = elastic6.fields.Text(analyzer=route_prefix_analyzer)
+    provider_id = elastic6.Keyword(index=True)
+    page_id = elastic6.Keyword(index=True)
+    preprint_id = elastic6.Keyword(index=True)
+    route_name = elastic6.Text(analyzer=route_prefix_analyzer)
 
     class Index:
         settings = {"refresh_interval": "-1"}
@@ -158,7 +158,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_inheritance(self):
         class MyBaseMetric(elastic6.Metric):
-            page_id = elastic6.fields.Keyword(index=True)
+            page_id = elastic6.Keyword(index=True)
 
             class Index:
                 settings = {"number_of_shards": 2}
