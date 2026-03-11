@@ -47,7 +47,7 @@ def run_lint() -> None:
     _run("poetry", "run", "flake8")
     _run("poetry", "run", "black", "--check", ".")
     # TODO: figure out why mypy runs differently in a container?
-    # _run("poetry", "run", "mypy", "elasticsearch_metrics")
+    _run("poetry", "run", "mypy", "elasticsearch_metrics")
 
 
 def run_autofix() -> None:

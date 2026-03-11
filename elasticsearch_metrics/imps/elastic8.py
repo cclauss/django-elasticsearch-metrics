@@ -56,6 +56,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
     overrides behavior in elasticsearch-py's `IndexMeta` to allow
     additional config in a type's `class Meta`
     """
+    Meta: type
 
     # override IndexMeta.__new__, to do a few things differently
     def __new__(mcls, name, bases, attrs):  # noqa: B902
@@ -63,13 +64,15 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
         _cls_meta = attrs.get("Meta") or type("Meta", (), {})
         # call IndexMeta.__new__
         _cls = super().__new__(mcls, name, bases, attrs)
+        assert isinstance(_cls, _DjelmeRecordtypeMetaclass)
+        assert issubclass(_cls, DjelmeRecordtype)
         # un-remove `class Meta` for later use
         if "Meta" in _cls.__dict__:
             for _attrname, _attrval in _cls_meta.__dict__.items():
                 if not hasattr(_cls.Meta, _attrname):
                     setattr(_cls.Meta, _attrname, _attrval)
-        else:
-            _cls.Meta = _cls_meta  # guarantee not a parent.Meta
+        else:  # guarantee non-inherited Meta
+            _cls.Meta = _cls_meta
         # change default mapping for `str` annotations from Text to Keyword
         _cls._doc_type.type_annotation_map[str] = (Keyword, {})
         # workaround: elasticsearch.dsl inherits fields but not defaults
@@ -125,9 +128,10 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
     >>> MyConcreteRecord.app_label
     'elasticsearch_metrics'
     """
+    _: dataclasses.KW_ONLY
 
     UNIQUE_TOGETHER_FIELDS: typing.ClassVar[collections.abc.Iterable[str]] = ()
-    unique_id: str = Keyword()
+    unique_id: str = mapped_field(Keyword(), default="")  # filled on save
 
     class Meta:
         abstract = True
@@ -140,7 +144,7 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
         return _instance
 
     @classmethod
-    def _get_using(cls, using: str | Elastic8Client = None) -> str | Elastic8Client:
+    def _get_using(cls, using: str | Elastic8Client | None = None) -> str | Elastic8Client:
         """get the elasticsearch8 connection name to use
 
         overrides elasticsearch8.Document._get_using to allow
@@ -161,7 +165,7 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
     def _djelme_teardown(cls, es_client):
         raise NotImplementedError("oh hey, a non-timeseries use for this")
 
-    def save(self, *, using=None, index=None, **kwargs):
+    def save(self, using=None, index=None, **kwargs):
         """save the record
 
         overrides `save` to populate document_id and send pre_save/post_save signals
@@ -297,7 +301,7 @@ class TimeseriesRecord(DjelmeRecordtype):
         assert self.timestamp is not None
         return self.format_timeseries_index_name(self.timestamp)
 
-    def save(self, *, index=None, **kwargs):
+    def save(self, using=None, index=None, **kwargs):
         """save the record
 
         overrides `save` to choose a timeseries index based on `self.timestamp`
@@ -305,7 +309,7 @@ class TimeseriesRecord(DjelmeRecordtype):
         assert self.timestamp is not None
         if index is None:
             index = self.timeseries_index_name
-        ret = super().save(index=index, **kwargs)
+        ret = super().save(using=using, index=index, **kwargs)
         return ret
 
     @classmethod

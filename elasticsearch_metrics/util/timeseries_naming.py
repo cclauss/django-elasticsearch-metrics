@@ -173,6 +173,7 @@ def format_index_pattern_for_timerange(
     only_datelike: bool = False,
 ) -> str:
     """get an index-name pattern for all indexes within a timepart range
+
     >>> format_index_pattern_for_timerange('aoeu', 'mynote',
     ...     (5020, 2, 2), (5020, 12, 20),
     ...     timedepth=2)
