@@ -1,15 +1,20 @@
-# django-elasticsearch-metrics
-
-[![pypi](https://badge.fury.io/py/django-elasticsearch-metrics.svg)](https://badge.fury.io/py/django-elasticsearch-metrics)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
+# django-elasticsearch-metrics ("djelme" for short)
 
 Django app for storing time-series metrics in Elasticsearch.
+
+`django-elasticsearch-metrics` on pypi: https://pypi.org/project/django-elasticsearch-metrics
+
+python importables:
+- `elasticsearch_metrics`
+- `elasticsearch_metrics.imps.elastic8`
+- `elasticsearch_metrics.imps.elastic6`
+- ...
 
 ## Pre-requisites
 
 * Python >=3.10
 * Django 4.2, 5.1, or 5.2
-* Elasticsearch 6
+* Elasticsearch 6 or 8
 
 ## Install
 
@@ -22,85 +27,90 @@ pip install django-elasticsearch-metrics
 Add `"elasticseach_metrics"` to `INSTALLED_APPS`.
 
 ```python
+# ... in your django project settings.py ...
 INSTALLED_APPS += ["elasticsearch_metrics"]
 ```
 
-Define the `ELASTICSEARCH_DSL` setting.
-
+Configure at least one djelme backend:
 ```python
-ELASTICSEARCH_DSL = {"default": {"hosts": "localhost:9200"}}
+# ... in your django project settings.py ...
+DJELME_BACKENDS = {
+    "my-es8-backend": {  # a name from and for you 
+        "elasticsearch_metrics.imps.elastic8": {  # importable djelme implementation
+            # dictionary of kwargs for the imp's `djelme_backend` constructor
+            # (in this case passed thru as kwargs to `elasticsearch8.Elasticsearch`)
+            "hosts": "https://my-elastic8.example:9200",
+        },
+    },
+}
 ```
 
-This setting is passed to [`elasticsearch_dsl.connections.configure`](http://elasticsearch-dsl.readthedocs.io/en/stable/configuration.html#multiple-clusters) so
-it takes the same parameters.
-
-
-In one of your apps, define a new metric in `metrics.py`.
-
-A `Metric` is a subclass of [`elasticsearch_dsl.Document`](https://elasticsearch-dsl.readthedocs.io/en/stable/api.html#document).
+In one of your apps, add record types in `metrics.py`
 
 
 ```python
 # myapp/metrics.py
 
-from elasticsearch_metrics.imps import elastic8
+from elasticsearch_metrics.imps.elastic8 import EventRecord
 
 
-class PageView(elastic8.EventLog):
-    page_id: int
+class UsageRecord(EventRecord):
+    item_id: int
+
+    class Meta:
+        djelme_backend = "my-es8-backend"  # optional if only one backend
 ```
 
-Use the `sync_metrics` management command to ensure that the [index template](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-templates.html)
-for your metric is created in Elasticsearch.
+Either enable autosetup...
+```python
+# ... in your django project settings file ...
+DJELME_AUTOSETUP = True
+```
 
+...or be sure to run the `djelme_backend_setup` management command before trying to store anything.
 ```shell
-# This will create an index template called myapp_pageview
-python manage.py sync_metrics
+# This will 
+# This will create an index template for usagerecord timeseries indexes
+python manage.py djelme_backend_setup
 ```
 
 Now add some data:
 
 ```python
-from myapp.metrics import PageView
+from myapp.metrics import UsageRecord
 
 # By default we create an index for each day.
 # Therefore, this will persist the document
 # to an index named for the record type and date
-PageView.record(page_id='my.page.id')
+UsageRecord.record(item_id='my.item.id')
 ```
 
 Go forth and search!
 
 ```python
-# perform a search across all page views
-PageView.search()
+# search across all timeseries indexes -- get an `elasticsearch8.dsl.Search` object
+UsageRecord.search()
 ```
 
-## Per-month or per-year indices
+## Timeseries indexes
 
-By default, an index is created for every day that a metric is saved.
-You can change this to create an index per month or per year by changing
-the `ELASTICSEARCH_METRICS_DATE_FORMAT` setting.
+By default, behind the scenes, a new index is created for each record type for each month
+in which a record is saved (using UTC timezone). You can change the per-index timespan by
+setting `Meta.timedepth` on the record type.
 
+- index per day, '...YYYY_MM_DD...': `timedepth = 3`
+- index per month, '...YYYY_MM...': `timedepth = 2`
+- index per year, '...YYYY...': `timedepth = 1`
 
-```python
-# settings.py
-
-# Monthly:
-ELASTICSEARCH_METRICS_DATE_FORMAT = "%Y.%m"
-
-# Yearly:
-ELASTICSEARCH_METRICS_DATE_FORMAT = "%Y"
-```
 
 ## Index settings
 
 You can configure the index template settings by setting
-`Metric.Index.settings`.
+`Index.settings` on a record type.
 
 ```python
-class PageView(metrics.Metric):
-    page_id = metrics.Integer()
+class UsageRecord(EventRecord):
+    item_id: int
 
     class Index:
         settings = {"number_of_shards": 2, "refresh_interval": "5s"}
@@ -108,18 +118,17 @@ class PageView(metrics.Metric):
 
 ## Index templates
 
-Each `Metric` will have its own [index template](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-templates.html).
+Each record type will have its own [index template](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-templates.html).
 The index template name and glob pattern are computed from the app label
-for the containing app and the class's name. For example, a `PageView`
+for the containing app and the class's name. For example, a `UsageRecord`
 class defined in `myapp/metrics.py` will have an index template with the
-name `myapp_pageview` and a template glob pattern of `myapp_pageview_*`.
+name `myapp_usagerecord` and a template glob pattern of `myapp_usagerecord_*`.
 
-If you declare a `Metric` outside of an app, you will need to set
-`app_label`.
+If you declare a record type outside of an app, you will need to set `app_label`.
 
 
 ```python
-class PageView(metrics.Metric):
+class UsageRecord(EventRecord):
     class Meta:
         app_label = "myapp"
 ```
@@ -127,28 +136,28 @@ class PageView(metrics.Metric):
 Alternatively, you can set `template_name` and/or `template` explicitly.
 
 ```python
-class PageView(metrics.Metric):
-    page_id = metrics.Integer()
+class UsageRecord(EventRecord):
+    item_id: int
 
     class Meta:
         template_name = "myapp_pviews"
         template = "myapp_pviews_*"
 ```
 
-## Abstract metrics
+## Abstract record types
 
 ```python
-from elasticsearch_metrics import metrics
+from elasticsearch_metrics.imps.elastic8 import EventRecord
 
 
-class MyBaseMetric(metrics.Metric):
-    page_id = metrics.Integer()
+class MyBaseMetric(EventRecord):
+    item_id: int
 
     class Meta:
         abstract = True
 
 
-class PageView(MyBaseMetric):
+class UsageRecord(MyBaseMetric):
     class Meta:
         app_label = "myapp"
 ```
@@ -176,23 +185,41 @@ def test_something():
 
 ## Configuration
 
-* `ELASTICSEARCH_DSL`: Required. Connection settings passed to
-  [`elasticsearch_dsl.connections.configure`](http://elasticsearch-dsl.readthedocs.io/en/stable/configuration.html#multiple-clusters).
+* `DJELME_TIMESERIES_BACKENDS`: Named backends for storing or searching records from your django app
+  -- nested mapping from backend name (any string, your choice) to python-importable paths
+  for modules that (like `"elasticsearch_metrics.imps.elastic8"`)
+  to "imp kwargs" config dictionaries given to the imp module's `djelme_backend` constructor
+  ```python
+  # ... in your django project settings.py ...
+  DJELME_BACKENDS = {
+      "my-es8-backend": {  # a name from and for you 
+          "elasticsearch_metrics.imps.elastic8": {  # importable djelme implementation
+              # dictionary of kwargs for the imp's `djelme_backend` constructor
+              # (in this case passed thru as kwargs to `elasticsearch8.Elasticsearch`)
+              "hosts": "https://my-elastic8.example:9200",
+          },
+      },
+  }
+  ```
+
+* `DJELME_AUTOSETUP`: Optional feature, default `False` -- set `True` for backend setup
+  (like creating index templates in elasticsearch) to run automatically when your django app starts.
+
 * `ELASTICSEARCH_METRICS_DATE_FORMAT`: Date format to use when creating
     indexes. Default: `%Y.%m.%d` (same date format Elasticsearch uses for
     [date math](https://www.elastic.co/guide/en/elasticsearch/reference/current/date-math-index-names.html))
 
 ## Management commands
 
-* `djelme_types`: Pretty-print a listing of all registered record types.
-* `djelme_setup`: Ensure that index templates have been created for your record types.
-* `djelme_check`: Check if index templates are in sync. Exits
+* `djelme_backend_types`: Pretty-print a listing of all registered record types.
+* `djelme_backend_setup`: Ensure that index templates have been created for your record types.
+* `djelme_backend_check`: Check if index templates are in sync. Exits
     with an error code if any templates are out of sync.
 
 <!-- * `clean_metrics` : Clean old data using [curator](https://curator.readthedocs.io/en/latest/). -->
 <!--  -->
 <!-- ``` -->
-<!-- python manage.py clean_metrics myapp.PageView --older-than 45 --time-unit days -->
+<!-- python manage.py clean_metrics myapp.UsageRecord --older-than 45 --time-unit days -->
 <!-- ``` -->
 
 ## Signals
@@ -217,7 +244,7 @@ Signals are located in the `elasticsearch_metrics.signals` module.
     To enable `_source`, you can override it in `class Meta`.
 
 ```python
-class MyMetric(metrics.Metric):
+class MyMetric(EventRecord):
     class Meta:
         source = metrics.MetaField(enabled=True)
 ```

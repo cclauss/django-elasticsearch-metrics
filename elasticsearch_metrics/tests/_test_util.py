@@ -1,8 +1,10 @@
 from io import StringIO
 from unittest import mock
+import types
+import typing
 
 from django.core.management import call_command
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.test import SimpleTestCase
 
 from elasticsearch_metrics.registry import djelme_registry
@@ -12,67 +14,62 @@ class SimpleDjelmeTestCase(SimpleTestCase):
     """SimpleDjelmeTestCase: base test case with djelme-specific conveniences"""
 
     def enterContext(self, context_manager):
-        # TestCase.enterContext added in python3.11 -- implementing here until 3.10 eol
+        # unittest.TestCase.enterContext added in python3.11 -- implementing here until 3.10 eol
         result = context_manager.__enter__()
         self.addCleanup(lambda: context_manager.__exit__(None, None, None))
         return result
 
     def run_mgmt_command(
-        self,
-        cmd: str | BaseCommand | type[BaseCommand],
-        *args,
-        **options,
+        self, cmd: str | BaseCommand | types.ModuleType, *args: str, **options: str
     ) -> tuple[str, str]:
         """run a django management command, return (stdout, stderr) tuple
 
-        may be called with a command name or Command type/instance
+        wraps django.core.management.call_command to handle string-io and
+        also accept a management command module
         """
-        _cmd = cmd if isinstance(cmd, (str, BaseCommand)) else cmd()
+        _cmd = cmd.Command() if isinstance(cmd, types.ModuleType) else cmd
         _out, _err = StringIO(), StringIO()
-        try:
-            call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
-        except CommandError as _cmd_err:
-            return _out.getvalue(), "\n".join((_err.getvalue(), str(_cmd_err)))
-
+        call_command(_cmd, *args, **options, stdout=_out, stderr=_err)
         return _out.getvalue(), _err.getvalue()
 
 
 class RealElasticTestCase(SimpleDjelmeTestCase):
     """RealElasticTestCase: base test case with actual elasticsearch running"""
 
-    __auto_setup_imps: bool
+    __autosetup_backends: bool
+    __autoteardown_backends: bool
 
     def __init_subclass__(
         cls,
-        /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, auto_setup_imps=False)
-        auto_setup_imps: bool = True,
-        auto_teardown_imps: bool = True,
-        **kwargs,
+        /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, autosetup_djelme_backends=False)
+        autosetup_djelme_backends: bool = True,
+        autoteardown_djelme_backends: bool = True,
+        **kwargs: typing.Any,
     ):
         super().__init_subclass__(**kwargs)
-        cls.__auto_setup_imps = auto_setup_imps
-        cls.__auto_teardown_imps = auto_teardown_imps
+        cls.__autosetup_backends = autosetup_djelme_backends
+        cls.__autoteardown_backends = autoteardown_djelme_backends
 
     def setUp(self):
         super().setUp()
-        if self.__auto_setup_imps:
-            self.setup_djelme_imps()
+        if self.__autosetup_backends:
+            self.setup_backends()
 
     def tearDown(self):
         super().tearDown()
-        if self.__auto_teardown_imps:
-            self.teardown_djelme_imps()
+        if self.__autoteardown_backends:
+            self.teardown_backends()
 
-    def setup_djelme_imps(self):
+    def setup_backends(self):
         # TODO: prefix index names, avoid collisions across test runs
-        # get settings from elasticsearch_metrics.tests.settings.DJELMETRICS_TIMESERIES_IMPS
-        # self.teardown_djelme_imps()  # in case any already exist
-        for _imp in djelme_registry.each_imp():
-            _imp.setup_timeseries_indexes()
+        # get settings from elasticsearch_metrics.tests.settings.DJELME_BACKENDS
+        # self.teardown_backends()  # in case any already exist
+        for _backend_name, _recordtypes in djelme_registry.each_recordtype_by_backend():
+            djelme_registry.get_backend(_backend_name).djelme_setup(_recordtypes)
 
-    def teardown_djelme_imps(self):
-        for _imp in djelme_registry.each_imp():
-            _imp.teardown_timeseries_indexes()
+    def teardown_backends(self):
+        for _backend_name, _recordtypes in djelme_registry.each_recordtype_by_backend():
+            djelme_registry.get_backend(_backend_name).djelme_teardown(_recordtypes)
 
 
 class MockSaveTestCase(SimpleDjelmeTestCase):

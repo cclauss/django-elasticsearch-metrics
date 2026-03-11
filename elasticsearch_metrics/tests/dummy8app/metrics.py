@@ -1,4 +1,4 @@
-from elasticsearch8.dsl import Keyword, Text, mapped_field, analyzer, tokenizer
+from elasticsearch8.dsl import Text, mapped_field, analyzer, tokenizer
 from elasticsearch_metrics.imps import elastic8 as djelme
 
 dot_path_analyzer = analyzer(
@@ -7,14 +7,14 @@ dot_path_analyzer = analyzer(
 )
 
 
-class Dummy8Event(djelme.EventLog):
+class Dummy8Event(djelme.EventRecord):
     intensity: int
 
     class Index:
-        using = "elastic8events"
+        using = "my_elastic8_events"
 
 
-class Dummy8EventWithExplicitNamePrefix(djelme.EventLog):
+class Dummy8EventWithExplicitNamePrefix(djelme.EventRecord):
     intenzity: int
 
     class Meta:
@@ -22,31 +22,32 @@ class Dummy8EventWithExplicitNamePrefix(djelme.EventLog):
         timeseries_recordtype_name = "eventlog"
 
     class Index:
-        using = "elastic8events"
+        using = "my_elastic8_events"
 
 
-class ThingHappened(djelme.EventLog):
-    thing_id: str | None = mapped_field(Keyword(), default=None)
-    happen_code: str | None = mapped_field(Keyword(), default=None)
+class ThingHappened(djelme.EventRecord):
+    thing_id: str = ""
+    happen_code: str = ""
     dot_path: str | None = mapped_field(Text(analyzer=dot_path_analyzer), default=None)
+    commentary: str | None = mapped_field(Text(), default=None)
 
     class Index:
         settings = {"refresh_interval": "-1"}
-        using = "elastic8events"
+        using = "my_elastic8_events"
 
     class Meta:
         timeseries_recordtype_name = "happen"
-        timepattern_depth = 2
+        timedepth = 2
 
 
 # TODO: tests using ThingHappeningsReport
-class ThingHappeningsReport(djelme.CyclicReport):
-    item_id: str = Keyword()
-    item_type: str = Keyword()
+class ThingHappeningsReport(djelme.CyclicRecord):
+    item_id: str
+    item_type: str
 
     class Index:
         settings = {"refresh_interval": "-1"}
-        using = "elastic8reports"
+        using = "my_elastic8_reports"
 
     class Meta:
         timeseries_name_prefix = "blarg"

@@ -1,7 +1,7 @@
 from django.test import SimpleTestCase
 
 from elasticsearch_metrics.imps import elastic6
-from elasticsearch_metrics.registry import registry
+from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.tests.dummy6app.metrics import Dummy6Metric
 from elasticsearch_metrics.tests.dummy8app.metrics import Dummy8Event
 
@@ -13,12 +13,14 @@ class MetricWithAppLabel(elastic6.Metric):
 
 class TestTimeseriesTypeRegistry(SimpleTestCase):
     def test_recordtype_in_app_is_in_registry(self):
-        assert "dummy6app" in registry.all_recordtypes
-        assert registry.all_recordtypes["dummy6app"]["dummy6metric"] is Dummy6Metric
+        assert "dummy6app" in djelme_registry.all_recordtypes
+        assert (
+            djelme_registry.all_recordtypes["dummy6app"]["dummy6metric"] is Dummy6Metric
+        )
 
     def test_recordtype_with_explicit_label_set_is_in_registry(self):
         assert (
-            registry.all_recordtypes["dummy6app"]["metricwithapplabel"]
+            djelme_registry.all_recordtypes["dummy6app"]["metricwithapplabel"]
             is MetricWithAppLabel
         )
 
@@ -30,20 +32,22 @@ class TestTimeseriesTypeRegistry(SimpleTestCase):
                     app_label = "dummy6app"
 
     def test_get_recordtype(self):
-        assert registry.get_recordtype("dummy6app", "Dummy6Metric") is Dummy6Metric
-        assert registry.get_recordtype("dummy6app.Dummy6Metric") is Dummy6Metric
-        assert registry.get_recordtype("dummy8app", "Dummy8Event") is Dummy8Event
-        assert registry.get_recordtype("dummy8app.Dummy8Event") is Dummy8Event
+        assert (
+            djelme_registry.get_recordtype("dummy6app", "Dummy6Metric") is Dummy6Metric
+        )
+        assert djelme_registry.get_recordtype("dummy6app.Dummy6Metric") is Dummy6Metric
+        assert djelme_registry.get_recordtype("dummy8app", "Dummy8Event") is Dummy8Event
+        assert djelme_registry.get_recordtype("dummy8app.Dummy8Event") is Dummy8Event
 
         with self.assertRaises(LookupError) as excinfo:
-            registry.get_recordtype("dummy6app", "DoesNotExist")
+            djelme_registry.get_recordtype("dummy6app", "DoesNotExist")
         assert (
             "App 'dummy6app' doesn't have a 'DoesNotExist' metric."
             in excinfo.exception.args[0]
         )
 
         with self.assertRaises(LookupError) as excinfo:
-            registry.get_recordtype("notanapp", "Dummy6Metric")
+            djelme_registry.get_recordtype("notanapp", "Dummy6Metric")
         assert (
             "No recordtypes found in app with label 'notanapp'."
             in excinfo.exception.args[0]
@@ -54,13 +58,15 @@ class TestTimeseriesTypeRegistry(SimpleTestCase):
             class Meta:
                 app_label = "anotherapp"
 
-        assert Dummy6Metric in registry.each_recordtype()
-        assert AnotherMetric in registry.each_recordtype()
-        assert Dummy6Metric in registry.each_recordtype(app_label="dummy6app")
-        assert AnotherMetric not in registry.each_recordtype(app_label="dummy6app")
+        assert Dummy6Metric in djelme_registry.each_recordtype()
+        assert AnotherMetric in djelme_registry.each_recordtype()
+        assert Dummy6Metric in djelme_registry.each_recordtype(app_label="dummy6app")
+        assert AnotherMetric not in djelme_registry.each_recordtype(
+            app_label="dummy6app"
+        )
 
         with self.assertRaises(LookupError) as excinfo:
-            list(registry.each_recordtype("notanapp"))
+            list(djelme_registry.each_recordtype(app_label="notanapp"))
         assert (
             "No recordtypes found in app with label 'notanapp'."
             in excinfo.exception.args[0]
@@ -75,6 +81,6 @@ class TestTimeseriesTypeRegistry(SimpleTestCase):
             class Meta:
                 app_label = "anotherapp"
 
-        assert elastic6.Metric not in registry.each_recordtype()
-        assert AbstractMetric not in registry.each_recordtype()
-        assert ConcreteMetric in registry.each_recordtype()
+        assert elastic6.Metric not in djelme_registry.each_recordtype()
+        assert AbstractMetric not in djelme_registry.each_recordtype()
+        assert ConcreteMetric in djelme_registry.each_recordtype()

@@ -1,7 +1,7 @@
 """elasticsearch_metrics.elastic8: store events and reports in elasticsearch 8
 
->>> from elasticsearch_metrics.imps.elastic8 import EventLog
->>> class TheThingHappened(EventLog):
+>>> from elasticsearch_metrics.imps.elastic8 import EventRecord
+>>> class TheThingHappened(EventRecord):
 ...     intensity: int
 ...
 ...     class Index:  # elasticsearch index settings
@@ -13,15 +13,16 @@
 
 __all__ = (
     "TimeseriesRecord",
-    "EventLog",
-    "CyclicReport",
+    "EventRecord",
+    "CyclicRecord",
 )
 import collections
 import dataclasses
 import datetime
 import logging
+import typing
 
-from django.utils import timezone
+import django
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8 import Elasticsearch as Elastic8Client
 from elasticsearch8.dsl import (
@@ -29,62 +30,77 @@ from elasticsearch8.dsl import (
     connections,
     ComposableIndexTemplate,
     mapped_field,
+    Keyword,
 )
 from elasticsearch8.dsl._sync.document import IndexMeta
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import djelme_registry
-from elasticsearch_metrics.protocols import ProtoTimeseriesImp
+from elasticsearch_metrics.protocols import ProtoDjelmeBackend, ProtoCountedUsage
 from elasticsearch_metrics.util import timeseries_naming
+from elasticsearch_metrics.util.unique_together import get_unique_id
+from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
 
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_TIMEPATTERN_DEPTH = 2  # xxxx_xx
+_DEFAULT_TIMEDEPTH = 2  # xxxx_xx_ (monthly)
 
 
-class _DjelmeRecordMeta(IndexMeta):
-    """Metaclass for the base `DjelmeRecord` class.
+class _DjelmeRecordtypeMetaclass(IndexMeta):
+    """Metaclass for the base `DjelmeRecordtype` class.
 
     overrides behavior in elasticsearch-py's `IndexMeta` to allow
     additional config in a type's `class Meta`
     """
 
+    # override IndexMeta.__new__, to do a few things differently
     def __new__(mcls, name, bases, attrs):  # noqa: B902
-        # override IndexMeta.__new__, which removes `class Meta`
-        _doc_type_meta = attrs.get("Meta") or type("Meta", (), {})
+        # save `class Meta` to un-remove it later
+        _cls_meta = attrs.get("Meta") or type("Meta", (), {})
+        # call IndexMeta.__new__
         _cls = super().__new__(mcls, name, bases, attrs)
+        # un-remove `class Meta` for later use
         if "Meta" in _cls.__dict__:
-            for _attrname, _attrval in _doc_type_meta.__dict__.items():
+            for _attrname, _attrval in _cls_meta.__dict__.items():
                 if not hasattr(_cls.Meta, _attrname):
                     setattr(_cls.Meta, _attrname, _attrval)
         else:
-            _cls.Meta = _doc_type_meta
-        # register non-abstract subtypes
+            _cls.Meta = _cls_meta  # guarantee not a parent.Meta
+        # change default mapping for `str` annotations from Text to Keyword
+        _cls._doc_type.type_annotation_map[str] = (Keyword, {})
+        # workaround: elasticsearch.dsl inherits fields but not defaults
+        for _b in bases:
+            for _fieldname, _default in getattr(_b, "_defaults", {}).items():
+                _cls._defaults.setdefault(_fieldname, _default)
+        # and register concrete record types with the djelme registry
         if not _cls.is_abstract:
             djelme_registry.register_recordtype(
-                _cls, app_label=_cls._get_meta_attr("app_label", None)
+                _cls,
+                imp_module_name=__name__,
+                app_label=_cls._get_meta_attr("app_label", None),
+                default_backend=_cls._index._using or "",
             )
         return _cls
 
-    def _get_meta_attr(self, attr_name: str, default=None):
+    def _get_meta_attr(self, attr_name: str, default: typing.Any = None) -> typing.Any:
         _meta = getattr(self, "Meta", None)
         return getattr(_meta, attr_name, default)
 
     @property
     def is_abstract(self) -> bool:
-        return self._get_meta_attr("abstract", False)
+        return bool(self._get_meta_attr("abstract", False))
 
     @property
     def app_label(self) -> str | None:
         return djelme_registry.get_recordtype_app_label(self)
 
 
-class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
+class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
     """a subclass of elasticsearch8.dsl.Document, with conveniences
 
-    >>> class MyAbstractRecord(DjelmeRecord):
+    >>> class MyAbstractRecord(DjelmeRecordtype):
     ...     foo: int
     ...     class Meta:
     ...         abstract = True
@@ -108,6 +124,9 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
     'elasticsearch_metrics'
     """
 
+    UNIQUE_TOGETHER_FIELDS: typing.ClassVar[collections.abc.Iterable[str]] = ()
+    unique_id: str = Keyword()
+
     class Meta:
         abstract = True
 
@@ -123,23 +142,60 @@ class DjelmeRecord(Document, metaclass=_DjelmeRecordMeta):
         """get the elasticsearch8 connection name to use
 
         overrides elasticsearch8.Document._get_using to allow
-        getting connection name from a djelme imp and default
-        to the first configured imp that uses this imp module
+        getting connection name from a djelme backend and default
+        to the first configured backend that uses this imp module
         """
-        _imp = None
-        if using is None:
-            _each_imp = djelme_registry.each_imp(imp_module_path=__name__)
-            _imp = next(_each_imp, None)
-        elif isinstance(using, str) and (using in djelme_registry.configured_imps):
-            _imp = djelme_registry.get_imp(using)
-        if _imp is not None:
-            assert isinstance(_imp, DjelmeElastic8Imp)
-            return _imp._elastic8dsl_connection_name
+        _backend: ProtoDjelmeBackend | None = None
+        if using in (None, "default"):
+            _backend = djelme_registry.get_backend_for_recordtype(cls)
+        elif isinstance(using, str) and (using in djelme_registry.all_backends):
+            _backend = djelme_registry.get_backend(using)
+        if _backend is not None:
+            assert isinstance(_backend, DjelmeElastic8Backend)
+            return _backend._elastic8dsl_connection_name
         return super()._get_using(using)
 
+    @classmethod
+    def _djelme_teardown(cls, es_client):
+        raise NotImplementedError("oh hey, a non-timeseries use for this")
 
-class TimeseriesRecord(DjelmeRecord):
-    timestamp: datetime.datetime = mapped_field(default_factory=timezone.now)
+    def save(self, *, using=None, index=None, **kwargs):
+        """save the record
+
+        overrides `save` to populate document_id and send pre_save/post_save signals
+        """
+        self._populate_unique_id()
+        signals.pre_save.send(self.__class__, instance=self, using=using, index=index)
+        _saved = super().save(using=using, index=index, **kwargs)
+        signals.post_save.send(self.__class__, instance=self, using=using, index=index)
+        return _saved
+
+    def _populate_unique_id(self) -> None:
+        _unique_id = self._get_unique_id()
+        assert _unique_id or not self.UNIQUE_TOGETHER_FIELDS
+        self.unique_id = _unique_id or ""
+        # make it unique by setting doc id in elasticsearch
+        if _unique_id and not self.meta.id:
+            self.meta.id = _unique_id
+
+    def _get_unique_id(self) -> str | None:
+        """
+        Get a unique document id by hashing values of "unique together"
+        fields for "ON CONFLICT UPDATE" behavior -- if the document
+        already exists, it will be replaced rather than duplicated.
+        Cannot detect/avoid conflicts this way, but that's ok.
+        """
+        if not self.UNIQUE_TOGETHER_FIELDS:
+            return None
+        return get_unique_id(
+            (getattr(self, _field_name) for _field_name in self.UNIQUE_TOGETHER_FIELDS)
+        )
+
+
+class TimeseriesRecord(DjelmeRecordtype):
+    timestamp: datetime.datetime = mapped_field(
+        default_factory=lambda: django.utils.timezone.now()
+    )
 
     class Meta:
         abstract = True
@@ -159,17 +215,26 @@ class TimeseriesRecord(DjelmeRecord):
         )
 
     @classmethod
+    def _djelme_teardown(cls, es8_client: Elastic8Client) -> None:
+        _indexname_wildcard = cls.format_timeseries_index_pattern()
+        _indices = es8_client.indices.get(index=_indexname_wildcard, features=",")
+        for _index_name in _indices.keys():
+            es8_client.indices.delete(index=_index_name)
+        _templatename = cls.get_timeseries_template_name()
+        try:
+            es8_client.indices.delete_index_template(name=_templatename)
+        except NotFoundError:
+            pass
+
+    @classmethod
     def format_timeseries_index_name(
         cls, timestamp: datetime.date | None = None
     ) -> str:
-        _timeparts = timeseries_naming.timeparts_from_date(
-            timestamp or timezone.now(),
-            cls.get_timepattern_depth(),
-        )
-        return timeseries_naming.format_index_name(
+        return timeseries_naming.format_index_name_for_date(
+            timestamp or django.utils.timezone.now(),
             prefix=cls.get_timeseries_name_prefix(),
             recordtype=cls.get_timeseries_recordtype_name(),
-            timeparts=_timeparts,
+            timedepth=cls.get_timedepth(),
         )
 
     @classmethod
@@ -187,11 +252,17 @@ class TimeseriesRecord(DjelmeRecord):
 
     @classmethod
     def get_timeseries_recordtype_name(cls) -> str:
-        return cls._get_meta_attr("timeseries_recordtype_name", cls.__name__)
+        _recordtype_name = cls._get_meta_attr(
+            "timeseries_recordtype_name", cls.__name__
+        )
+        assert isinstance(_recordtype_name, str)
+        return _recordtype_name
 
     @classmethod
     def get_timeseries_name_prefix(cls) -> str:
-        return cls._get_meta_attr("timeseries_name_prefix") or cls.app_label
+        _name_prefix = cls._get_meta_attr("timeseries_name_prefix") or cls.app_label
+        assert isinstance(_name_prefix, str)
+        return _name_prefix
 
     @classmethod
     def format_timeseries_index_pattern(cls, timeparts: tuple[int, ...] = ()) -> str:
@@ -202,8 +273,10 @@ class TimeseriesRecord(DjelmeRecord):
         )
 
     @classmethod
-    def get_timepattern_depth(cls) -> int:
-        return cls._get_meta_attr("timepattern_depth", _DEFAULT_TIMEPATTERN_DEPTH)
+    def get_timedepth(cls) -> int:
+        _timedepth = cls._get_meta_attr("timedepth", _DEFAULT_TIMEDEPTH)
+        assert isinstance(_timedepth, int)
+        return _timedepth
 
     @classmethod
     def _default_index(cls, index=None):
@@ -218,22 +291,19 @@ class TimeseriesRecord(DjelmeRecord):
         assert self.timestamp is not None
         return self.format_timeseries_index_name(self.timestamp)
 
-    def save(self, using=None, index=None, **kwargs):
+    def save(self, *, index=None, **kwargs):
         """save the record
 
-        overrides `Document.save` to choose a timeseries index based on `self.timestamp`
+        overrides `save` to choose a timeseries index based on `self.timestamp`
         """
-        if self.timestamp is None:
-            self.timestamp = timezone.now()  # HACK: why default_factory no work?
+        assert self.timestamp is not None
         if index is None:
             index = self.timeseries_index_name
-        signals.pre_save.send(self.__class__, instance=self, using=using, index=index)
-        ret = super().save(using=using, index=index, **kwargs)
-        signals.post_save.send(self.__class__, instance=self, using=using, index=index)
+        ret = super().save(index=index, **kwargs)
         return ret
 
     @classmethod
-    def sync_index_template(cls, using=None) -> ComposableIndexTemplate:
+    def sync_index_template(cls, using=None):  # -> ComposableIndexTemplate:
         """Sync the index template for this metric in Elasticsearch."""
         _template = cls.get_timeseries_template()
         signals.pre_index_template_create.send(
@@ -246,7 +316,7 @@ class TimeseriesRecord(DjelmeRecord):
         return _template
 
     @classmethod
-    def check_index_template(cls, using=None):
+    def check_djelme_setup(cls, using: str | None = None) -> bool:
         """Check if class is in sync with index template in Elasticsearch.
 
         :raise: IndexTemplateNotFoundError if index template does not exist.
@@ -304,26 +374,89 @@ class TimeseriesRecord(DjelmeRecord):
             return True
 
 
-class EventLog(TimeseriesRecord):
-    # TODO: EventLog expiration
+# TODO: EventRecord expiration
+# class EventRecord(TimeseriesRecord, ProtoExpirableRecord?):
+class EventRecord(TimeseriesRecord):
 
     class Meta:
         abstract = True
 
 
-class CyclicReport(TimeseriesRecord):
-    covers_from: datetime.date
-    covers_before: datetime.date
+# class CountedUsageRecord(EventRecord, ProtoCountedUsage):
+class CountedUsageRecord(EventRecord):
+    """
+    fields correspond to defined terms from COUNTER
+    https://cop5.projectcounter.org/en/5.0.2/appendices/a-glossary-of-terms.html
+    """
+
+    # for ProtoCountedUsage:
+    platform_iri: str
+    database_iri: str
+    item_iri: str
+    sessionhour_id: str = mapped_field(Keyword(), default="")
+    within_iris: list[str] = mapped_field(Keyword(), default_factory=list)
+
+    class Meta:
+        abstract = True
+
+    @classmethod
+    def record(
+        cls,
+        *,  # get these dirty identifying strings out of the way
+        user_id: str = "",
+        session_id: str = "",
+        request_host: str = "",
+        request_useragent: str = "",
+        django_request: (
+            django.http.HttpRequest | None
+        ) = None,  # or infer those from a django request
+        **kwargs: typing.Any,
+    ) -> "typing.Self":  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
+        """CountedUsageRecord.record(...): construct and save a record"""
+        _useragent = (
+            request_useragent
+            if (request_useragent or (django_request is None))
+            else django_request.META.get("HTTP_USER_AGENT", "")
+        )
+        _host = (
+            request_host
+            if (request_host or (django_request is None))
+            else django_request.get_host()
+        )
+        _sessionhour_id = opaque_sessionhour_id(
+            client_session_id=session_id,
+            user_id=user_id,
+            request_host=_useragent,
+            request_useragent=_host,
+        )
+        _new_record = super().record(
+            **kwargs,
+            sessionhour_id=opaque_sessionhour_id(
+                client_session_id=_sessionhour_id,
+                user_id=user_id,
+                request_host=_useragent,
+                request_useragent=_host,
+            ),
+        )
+        assert isinstance(_new_record, cls)
+        return _new_record
+
+
+class CyclicRecord(TimeseriesRecord):
+    """CyclicRecord: for recording a measurement on a periodic basis"""
+
+    covers_from: datetime.datetime
+    covers_before: datetime.datetime
 
     class Meta:
         abstract = True
 
 
 @dataclasses.dataclass
-class DjelmeElastic8Imp:
-    """DjelmeElastic8Imp: the elastic8 implementation of djelme (for use by generic djelme code)"""
+class DjelmeElastic8Backend:
+    """DjelmeElastic8Backend: elastic8 backend for djelme (for use by generic djelme code)"""
 
-    imp_name: str
+    backend_name: str
     imp_kwargs: dict[str, str]  # pass-thru to elasticsearch connection kwargs
     namespace_prefix: str = ""
 
@@ -334,47 +467,44 @@ class DjelmeElastic8Imp:
 
     @property
     def _elastic8dsl_connection_name(self) -> str:
-        return self.imp_name
+        return self.backend_name
 
     @property
-    def _elastic8dsl_connection_kwargs(self) -> dict:
+    def _elastic8dsl_connection_kwargs(self) -> dict[str, typing.Any]:
         return self.imp_kwargs
 
-    def setup_timeseries_indexes(self) -> None:
-        for _recordtype in self._each_recordtype():
+    def djelme_setup(self, recordtypes: collections.abc.Iterable[type]) -> None:
+        # for ProtoDjelmeBackend
+        for _recordtype in recordtypes:
             # TODO: logger.info
-            _recordtype.sync_index_template(using=self.elastic8_client)
+            if issubclass(_recordtype, DjelmeRecordtype):
+                _recordtype.init(using=self._elastic8dsl_connection_name)
 
-    def teardown_timeseries_indexes(self) -> None:
-        for _recordtype in self._each_recordtype():
-            _indexname_wildcard = _recordtype.format_timeseries_index_pattern()
-            _indices = self.elastic8_client.indices.get(
-                index=_indexname_wildcard, features=","
-            )
-            for _index_name in _indices.keys():
-                self.elastic8_client.indices.delete(index=_index_name)
-            _templatename = _recordtype.get_timeseries_template_name()
-            try:
-                self.elastic8_client.indices.delete_index_template(name=_templatename)
-            except NotFoundError:
-                pass
-
-    def _each_recordtype(self) -> collections.abc.Iterator[type[DjelmeRecord]]:
-        for _type in djelme_registry.each_recordtype(imp_name=self.imp_name):
-            assert issubclass(_type, DjelmeRecord)
-            yield _type
+    def djelme_teardown(self, recordtypes: collections.abc.Iterable[type]) -> None:
+        # for ProtoDjelmeBackend
+        for _recordtype in recordtypes:
+            assert issubclass(_recordtype, DjelmeRecordtype)
+            _recordtype._djelme_teardown(self.elastic8_client)
 
 
-djelme_imp = DjelmeElastic8Imp  # for ProtoTimeseriesImpModule
+if __debug__ and typing.TYPE_CHECKING:
+    # for static type-checking; verify intent
+    _: type[ProtoCountedUsage] = CountedUsageRecord
+    __: type[ProtoDjelmeBackend] = DjelmeElastic8Backend
+
+###
+# names expected by ProtoDjelmeImp
+
+djelme_backend = DjelmeElastic8Backend  # for ProtoDjelmeImp
 
 
-def djelme_when_ready(  # for ProtoTimeseriesImpModule
-    imps: collections.abc.Iterable[ProtoTimeseriesImp],
+def djelme_when_ready(  # for ProtoDjelmeImp
+    backends: collections.abc.Iterable[ProtoDjelmeBackend],
 ) -> None:
-    assert all(isinstance(_imp, DjelmeElastic8Imp) for _imp in imps)
     connections.configure(
         **{
-            _imp._elastic8dsl_connection_name: _imp._elastic8dsl_connection_kwargs
-            for _imp in imps
+            _backend._elastic8dsl_connection_name: _backend._elastic8dsl_connection_kwargs
+            for _backend in backends
+            if isinstance(_backend, DjelmeElastic8Backend)
         }
     )

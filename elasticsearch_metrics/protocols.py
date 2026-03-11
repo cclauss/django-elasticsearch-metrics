@@ -3,49 +3,77 @@ import collections
 import typing
 
 __all__ = (
-    "ProtoTimeseriesImp",
-    "ProtoTimeseriesImpModule",
+    "ProtoDjelmeBackend",
+    "ProtoDjelmeImp",
 )
 
 
-class ProtoTimeseriesImp(typing.Protocol):
+class ProtoDjelmeBackend(typing.Protocol):
     @property
-    def imp_name(self) -> str: ...
+    def backend_name(self) -> str: ...
     @property
     def imp_kwargs(self) -> dict[str, str]: ...
 
-    def each_timeseries_recordtype(
-        self,
-    ) -> collections.abc.Iterable[type[ProtoTimeseriesRecord]]: ...
+    def djelme_setup(self, recordtypes: collections.abc.Iterable[type]) -> None: ...
 
-    def each_timeseries_index_status(
-        self, *, recordtype: type | None = None
-    ) -> collections.abc.Iterable[str]: ...
+    def djelme_teardown(self, recordtypes: collections.abc.Iterable[type]) -> None: ...
 
-    #
-    def show_timeseries_indexes(self): ...
-    def setup_timeseries_indexes(self) -> None: ...
-    def teardown_timeseries_indexes(self) -> None: ...
-    def record_timeseries_record(self, record_doc: ProtoTimeseriesRecord) -> ...: ...
-    def check_timeseries_indexes(self): ...
+    # def get_timeseries_recordtype(
+    #     self, recordtype_name: str
+    # ) -> type[ProtoDjelmeRecord]: ...
+    # def show_timeseries_indexes(self): ...
+    # def record_timeseries_record(self, record_doc: ProtoDjelmeRecord) -> ...: ...
+    # def check_timeseries_indexes(self): ...
 
 
-class ProtoTimeseriesRecord(typing.Protocol):
-    ...
+class ProtoDjelmeRecord(typing.Protocol):
+    @classmethod
+    def record(
+        cls, **kwargs: typing.Any
+    ) -> "typing.Self":  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
+        ...
+
     # @classmethod
-    # def record(cls): ...
+    # def each_timeseries_index_status(cls) -> collections.abc.Iterable[str]: ...
+    @classmethod
+    def check_djelme_setup(cls, using: str | None = None) -> bool: ...
 
 
 @typing.runtime_checkable
-class ProtoTimeseriesImpModule(typing.Protocol):
+class ProtoDjelmeImp(typing.Protocol):
     @staticmethod
-    def djelme_imp(
-        imp_name: str,
+    def djelme_backend(
+        backend_name: str,
         imp_kwargs: dict[str, str],
         namespace_prefix: str = "",
-    ) -> ProtoTimeseriesImp: ...
+    ) -> ProtoDjelmeBackend:
+        """djelme_backend: impstantiate a djelme backend"""
 
     @staticmethod
     def djelme_when_ready(
-        imps: collections.abc.Iterable[ProtoTimeseriesImp],
-    ) -> None: ...
+        backends: collections.abc.Iterable[ProtoDjelmeBackend],
+    ) -> None:
+        """djelme_when_ready: recordtypes and djelme config loaded -- here's one of each backend"""
+
+
+###
+# counter?
+
+
+class ProtoCountedUsage(typing.Protocol):
+    """
+    fields correspond to defined terms from COUNTER
+    https://cop5.projectcounter.org/en/5.0.2/appendices/a-glossary-of-terms.html
+    """
+
+    # counter:Platform
+    platform_iri: str
+    # counter:Database
+    database_iri: str
+    # counter:Session
+    sessionhour_id: str
+    # counter:Item
+    item_iri: str
+    # within_iris corresponds roughly to counter:Title, but as a more
+    # inclusive within/part-of/contained-by relationship
+    within_iris: list[str]

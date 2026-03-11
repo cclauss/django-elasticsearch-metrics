@@ -3,9 +3,10 @@
 consider this code frozen/deprecated -- will be removed once no longer needed
 """
 
-from collections import ChainMap
+import collections
 from collections.abc import Iterator
 import dataclasses
+import datetime
 import logging
 
 from django.apps import apps
@@ -19,7 +20,7 @@ from elasticsearch6_dsl.index import Index
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
-from elasticsearch_metrics.protocols import ProtoTimeseriesImp
+from elasticsearch_metrics.protocols import ProtoDjelmeBackend
 from elasticsearch_metrics.registry import djelme_registry
 
 DEFAULT_DATE_FORMAT = "%Y.%m.%d"
@@ -42,11 +43,14 @@ class ReadonlyAttrMap:
     def __contains__(self, key):
         return hasattr(self.__inner_obj, key)
 
+    def __setitem__(self, key, value):
+        """implement __setitem__ to appease MutableMapping type on ChainMap -- does nothing"""
+
 
 def _get_default_using():
     """get the elasticsearch-dsl connection name to use"""
-    _each_imp_name = djelme_registry.each_imp_name(imp_module_path=__name__)
-    return next(_each_imp_name)
+    (_backend_name,) = djelme_registry.each_backend_name(imp_module_name=__name__)
+    return _backend_name
 
 
 class MetricMeta(IndexMeta):
@@ -81,6 +85,7 @@ class MetricMeta(IndexMeta):
                     )
             else:
                 app_label = app_config.label
+        assert isinstance(app_label, str)
 
         if not template_name:
             metric_name = new_cls.__name__.lower()
@@ -93,7 +98,12 @@ class MetricMeta(IndexMeta):
         # Abstract base metrics can't be instantiated and don't appear in
         # the list of metrics for an app.
         if not abstract:
-            djelme_registry.register_recordtype(new_cls, app_label=app_label)
+            djelme_registry.register_recordtype(
+                new_cls,
+                imp_module_name=__name__,
+                app_label=app_label,
+                default_backend=new_cls._index._using or "",
+            )
         return new_cls
 
     # Override IndexMeta.construct_index so that
@@ -105,9 +115,9 @@ class MetricMeta(IndexMeta):
             base._index.to_dict() for base in bases if hasattr(base, "_index")
         ]
         if opts:
-            index_config = ChainMap(ReadonlyAttrMap(opts), *parent_configs)
+            index_config = collections.ChainMap(ReadonlyAttrMap(opts), *parent_configs)  # type: ignore[arg-type]
         else:
-            index_config = ChainMap(*parent_configs)
+            index_config = collections.ChainMap(*parent_configs)
 
         i = Index(
             index_config.get("name", "*"),
@@ -162,7 +172,7 @@ class BaseMetric(metaclass=MetricMeta):
         return index_template
 
     @classmethod
-    def check_index_template(cls, using=None):
+    def check_index_template(cls, using: str | None = None) -> bool:
         """Check if class is in sync with index template in Elasticsearch.
 
         :raise: IndexTemplateNotFoundError if index template does not exist.
@@ -225,6 +235,10 @@ class BaseMetric(metaclass=MetricMeta):
             return True
 
     @classmethod
+    def check_djelme_setup(cls, using: str | None = None) -> bool:
+        return cls.check_index_template(using)
+
+    @classmethod
     def get_timeseries_index_template(cls):
         """Return an `IndexTemplate <elasticsearch_dsl.IndexTemplate>` for this metric."""
         return cls._index.as_template(
@@ -232,13 +246,17 @@ class BaseMetric(metaclass=MetricMeta):
         )
 
     @classmethod
-    def get_index_name(cls, date=None) -> str:
+    def get_index_name(cls, date: datetime.date | None = None) -> str:
         date = date or timezone.now().date()
         dateformat = getattr(
             settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
         )
         date_formatted = date.strftime(dateformat)
         return "{}_{}".format(cls._template_name, date_formatted)
+
+
+class Metric(Document, BaseMetric):
+    __doc__ = BaseMetric.__doc__
 
     @classmethod
     def record(cls, timestamp=None, **kwargs):
@@ -251,14 +269,14 @@ class BaseMetric(metaclass=MetricMeta):
         instance.save(index=index)
         return instance
 
-
-class Metric(Document, BaseMetric):
-    __doc__ = BaseMetric.__doc__
-
     @classmethod
     def init(cls, index=None, using=None):
-        """Create the index and populate the mappings in elasticsearch."""
-        return super(Metric, cls).init(index=index or cls.get_index_name(), using=using)
+        """Create the index and populate the mappings in elasticsearch.
+
+        override Document.init to choose an index name
+        """
+        cls.sync_index_template(using=using)
+        return super().init(index=index or cls.get_index_name(), using=using)
 
     def save(self, using=None, index=None, validate=True, **kwargs):
         """Same as `Document.save`, except will save into the index determined
@@ -291,36 +309,38 @@ class Metric(Document, BaseMetric):
         getting connection name from a djelme imp and default
         to the first configured imp that uses this imp module
         """
-        _imp = None
+        _backend = None
         if using in (None, "default"):
             return _get_default_using()
-        elif isinstance(using, str) and (using in djelme_registry.configured_imps):
-            _imp = djelme_registry.get_imp(using)
-            assert isinstance(_imp, DjelmeElastic6Imp)
-            return _imp.imp_name
+        elif isinstance(using, str) and (using in djelme_registry.all_backends):
+            _backend = djelme_registry.get_backend(using)
+            assert isinstance(_backend, DjelmeElastic6Backend)
+            return _backend.backend_name
         return super()._get_using(using)
 
 
 @dataclasses.dataclass
-class DjelmeElastic6Imp:
-    """DjelmeElastic6Imp: the elastic6 implementation of djelme (for use by generic djelme code)"""
+class DjelmeElastic6Backend:
+    """DjelmeElastic6Backend: the elastic6 implementation of djelme (for use by generic djelme code)"""
 
-    imp_name: str
+    backend_name: str
     imp_kwargs: dict[str, str]
     namespace_prefix: str = ""
 
     @property
     def elastic6_client(self):
         # assumes `connections.configure` was already called
-        return connections.get_connection(self.imp_name)
+        return connections.get_connection(self.backend_name)
 
-    def setup_timeseries_indexes(self) -> None:
-        for _metric_type in self._each_metric_type():
+    def djelme_setup(self, recordtypes: collections.abc.Iterable[type]) -> None:
+        for _metric_type in recordtypes:
+            assert issubclass(_metric_type, Metric)
             logger.info("setting up %r", _metric_type)
-            _metric_type.sync_index_template(using=self.elastic6_client)
+            _metric_type.init(using=self.backend_name)
 
-    def teardown_timeseries_indexes(self) -> None:
-        for _metric_type in self._each_metric_type():
+    def djelme_teardown(self, recordtypes: collections.abc.Iterable[type]) -> None:
+        for _metric_type in recordtypes:
+            assert issubclass(_metric_type, Metric)
             logger.info("tearing down %r", _metric_type)
             _indexname_wildcard = _metric_type._template_pattern
             _templatename = _metric_type._template_name
@@ -330,16 +350,13 @@ class DjelmeElastic6Imp:
             except NotFoundError:
                 pass
 
-    def _each_metric_type(self) -> Iterator[type[Metric]]:
-        for _metric in djelme_registry.each_recordtype(imp_name=self.imp_name):
-            assert issubclass(_metric, Metric)
-            yield _metric
+
+djelme_backend = DjelmeElastic6Backend  # for ProtoDjelmeImp
 
 
-djelme_imp = DjelmeElastic6Imp  # for ProtoTimeseriesImpModule
-
-
-def djelme_when_ready(  # for ProtoTimeseriesImpModule
-    imps: Iterator[ProtoTimeseriesImp],
+def djelme_when_ready(  # for ProtoDjelmeImp
+    backends: Iterator[ProtoDjelmeBackend],
 ) -> None:
-    connections.configure(**{_imp.imp_name: _imp.imp_kwargs for _imp in imps})
+    connections.configure(
+        **{_backend.backend_name: _backend.imp_kwargs for _backend in backends}
+    )

@@ -3,6 +3,7 @@ import datetime as dt
 
 from django.utils import timezone
 
+import elasticsearch8
 from elasticsearch8.dsl import (
     Keyword,
     ComposableIndexTemplate,
@@ -29,6 +30,14 @@ from elasticsearch_metrics.tests.dummy8app.metrics import (
 )
 
 
+def _es8_client(
+    backend_name: str = "my_elastic8_events",
+) -> elasticsearch8.Elasticsearch:
+    _backend = djelme_registry.get_backend(backend_name)
+    assert isinstance(_backend, djelme.DjelmeElastic8Backend)
+    return _backend.elastic8_client
+
+
 class TestFormatIndexName(SimpleDjelmeTestCase):
     def test_format_timeseries_index_name(self):
         date = dt.date(2020, 2, 14)
@@ -43,7 +52,7 @@ class TestFormatIndexName(SimpleDjelmeTestCase):
 
     def test_format_index_name_respects_date_format_setting(self):
         with unittest.mock.patch.object(
-            ThingHappened.Meta, "timepattern_depth", 4, create=True
+            ThingHappened.Meta, "timedepth", 4, create=True
         ):
             date = dt.date(2020, 2, 14)
             self.assertEqual(
@@ -108,6 +117,9 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_get_index_template_uses_app_label_in_class_meta(self):
         class MyRecord(djelme.TimeseriesRecord):
+            class Index:
+                using = "my_elastic8_events"
+
             class Meta:
                 app_label = "myapp"
 
@@ -129,6 +141,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
             class Index:
                 settings = {"number_of_shards": 2}
+                using = "my_elastic8_events"
 
             class Meta:
                 abstract = True
@@ -143,6 +156,9 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_source_may_be_enabled(self):
         class MyRecord(djelme.TimeseriesRecord):
+            class Index:
+                using = "my_elastic8_events"
+
             class Meta:
                 app_label = "dummy8app"
                 timeseries_recordtype_name = "myrecord"
@@ -217,10 +233,6 @@ class TestSignals(MockSaveTestCase):
 
 
 class TestCreateDocument(RealElasticTestCase):
-    @property
-    def es8_client(self):
-        return djelme_registry.get_imp("elastic8events").elastic8_client
-
     def test_create_document(self):
         _thing_id = "12345"
         _happen_code = "zyxwv"
@@ -236,43 +248,39 @@ class TestCreateDocument(RealElasticTestCase):
 
         # index mappings should match the index template
         name = _doc.timeseries_index_name
-        mapping = self.es8_client.indices.get_mapping(index=name)
+        mapping = _es8_client().indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}
         assert properties["happen_code"] == {"type": "keyword"}
 
 
-class TestInit(RealElasticTestCase, auto_setup_imps=False):
-    @property
-    def es8_client(self):
-        return djelme_registry.get_imp("elastic8events").elastic8_client
-
+class TestInit(RealElasticTestCase, autosetup_djelme_backends=False):
     def test_init(self):
         ThingHappened.init()
         name = ThingHappened.format_timeseries_index_name()
-        mapping = self.es8_client.indices.get_mapping(index=name)
+        mapping = _es8_client().indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}
         assert properties["happen_code"] == {"type": "keyword"}
 
-    def test_check_index_template(self):
+    def test_check_djelme_setup(self):
         with self.assertRaises(IndexTemplateNotFoundError):
-            assert ThingHappened.check_index_template() is False
+            assert ThingHappened.check_djelme_setup() is False
         ThingHappened.sync_index_template()
-        assert ThingHappened.check_index_template() is True
+        assert ThingHappened.check_djelme_setup() is True
 
         # When settings change, template is out of sync
         ThingHappened._index.settings(
             **{"refresh_interval": "1s", "number_of_shards": 1, "number_of_replicas": 2}
         )
         with self.assertRaises(IndexTemplateOutOfSyncError) as excinfo:
-            assert ThingHappened.check_index_template() is False
+            assert ThingHappened.check_djelme_setup() is False
         error = excinfo.exception
         assert error.settings_in_sync is False
         assert error.mappings_in_sync is True
         assert error.patterns_in_sync is True
 
         ThingHappened.sync_index_template()
-        assert ThingHappened.check_index_template() is True
+        assert ThingHappened.check_djelme_setup() is True

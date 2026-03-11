@@ -54,11 +54,13 @@ build-backend = "poetry.core.masonry.api"
 tests = [
     "factory-boy==3.3.3",
     "tox>=4.0.0",
+    "coverage>=7.13.0",
 ]
 lint = [
     "flake8==7.3.0",
     "flake8-bugbear==25.10.21",
     "black==25.11.0",
+    "mypy==1.19.1",
 ]
 dev = [
     { include-group = "tests" },
@@ -80,11 +82,3 @@ optional = true
 
 [tool.poetry.group.dev]
 optional = true
-
-[tool.mypy]
-strict = true
-
-[[tool.mypy.overrides]]
-module = 'elasticsearch_metrics.tests.*'
-allow_untyped_calls = true
-allow_untyped_defs = true
