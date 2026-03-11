@@ -39,7 +39,7 @@ def opaque_sessionhour_id(
     get a hashed id for a "user session" compatible with COUNTER code of practice:
     https://cop5.projectcounter.org/en/5.0.2/07-processing/03-counting-unique-items.html
     """
-    _now = timezone.now().astimezone(datetime.UTC)
+    _now = timezone.now().astimezone(datetime.timezone.utc)
     _today_str = _now.date().isoformat()
 
     # "A user session is defined any of the following ways: ..." (quotes out of order)
