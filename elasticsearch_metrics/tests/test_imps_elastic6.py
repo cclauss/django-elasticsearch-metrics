@@ -253,7 +253,7 @@ class TestSignals(MockSaveTestCase):
         assert post_save_kwargs["sender"] is PreprintView
 
 
-class TestIntegration(RealElasticTestCase):
+class TestIntegration(RealElasticTestCase, autosetup_djelme_backends=True):
     @property
     def es6_client(self):
         return connections.get_connection("my_elastic6")

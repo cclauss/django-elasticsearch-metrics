@@ -21,6 +21,8 @@ cd djelme
 create and activate a [python virtual environment](https://docs.python.org/3.14/tutorial/venv.html)
 with python version 3.10+ -- there are many tools for this; you may already have your own way.
 
+(if you'd rather work with containers and `docker-compose`-likes, see below)
+
 here's an example using `venv` (in python's standard lib) to create the virtual environment in a `.venv` directory, with bash:
 ```
 python -m venv .venv && source .venv/bin/activate
@@ -31,7 +33,7 @@ install dependencies (listed in `pyproject.toml`), including the `dev` extra (an
 pip install -e '.[dev,anydjango]'
 ```
 
-### Run tests and checks
+### run tests and checks
 
 these expect elasticsearches to be running and configured in `elasticsearch_metrics/tests/settings.py` (or set environment variables `ELASTICSEARCH6_URL` and `ELASTICSEARCH8_URL`) -- see `using docker-style container tools`, below, for one way to do that
 
@@ -41,11 +43,15 @@ running the python module `elasticsearch_metrics.tests` will run tests and linti
 ```
 python -m elasticsearch_metrics.tests
 ```
+without args, equivalent to `--test --lint`
+
 optional args:
-- `--devloop`: adds `--failfast --pdb` to test args
-- `--coverage`: print code coverage report
-- `--test`: run only tests (not linting)
-- `--lint`: run only linting checks (not tests)
+- `--devloop`: shorthand for `--test --lint --coverage`; also adds `--failfast --pdb` to test args
+- `--lint`: run linting checks
+- `--test`: run tests
+- `--coverage`: gather code-coverage when running tests and print coverage report
+- `--autofix`: autofix linting errors; autoformat code
+- any additional args passed thru to `django-admin test`
 
 see `elasticsearch_metrics/tests/__main__.py` for more details
 
@@ -85,7 +91,7 @@ run tests and lint
 pc up testbox
 ```
 
-example devloop -- use current code, debugger on error, stop on failure
+example devloop -- build with current code, lint and run tests with debugger on error, stop on failure
 ```
 pc run --build --rm --no-deps testbox poetry run python -m elasticsearch_metrics.tests --devloop
 ```

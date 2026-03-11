@@ -23,6 +23,7 @@ import logging
 import typing
 
 import django
+from django.conf import settings
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8 import Elasticsearch as Elastic8Client
 from elasticsearch8.dsl import (
@@ -45,7 +46,8 @@ from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_TIMEDEPTH = 2  # xxxx_xx_ (monthly)
+_DEFAULT_TIMEDEPTH_SETTING = "DJELME_DEFAULT_TIMEDEPTH"
+_DEFAULT_TIMEDEPTH = 3  # xxxx_xx_xx_ (daily)
 
 
 class _DjelmeRecordtypeMetaclass(IndexMeta):
@@ -270,11 +272,15 @@ class TimeseriesRecord(DjelmeRecordtype):
             prefix=cls.get_timeseries_name_prefix(),
             recordtype=cls.get_timeseries_recordtype_name(),
             timeparts=timeparts,
+            max_timedepth=cls.get_timedepth(),
         )
 
     @classmethod
     def get_timedepth(cls) -> int:
-        _timedepth = cls._get_meta_attr("timedepth", _DEFAULT_TIMEDEPTH)
+        _default_timedepth = getattr(
+            settings, _DEFAULT_TIMEDEPTH_SETTING, _DEFAULT_TIMEDEPTH
+        )
+        _timedepth = cls._get_meta_attr("timedepth", _default_timedepth)
         assert isinstance(_timedepth, int)
         return _timedepth
 

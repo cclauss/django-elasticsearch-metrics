@@ -7,7 +7,7 @@ import argparse
 import os
 import subprocess
 
-_DEVLOOP_DJANGOTEST_ARGS = ("--failfast", "--pdb")
+_DEVLOOP_DJANGOTEST_ARGS = ("--failfast",)  # "--pdb")
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--lint", action="store_true")  # _args.lint
@@ -70,19 +70,24 @@ def _print_coverage_report() -> None:
 
 if __name__ == "__main__":
     _args = _parser.parse_args()
-    _yes_default = not any((_args.test, _args.lint, _args.autofix))
+    # running without args same as `--test --lint`
+    _no_args = not any(
+        (_args.lint, _args.test, _args.coverage, _args.devloop, _args.autofix)
+    )
+    _yes_test = _no_args or _args.test or _args.devloop
+    _yes_lint = _no_args or _args.lint or _args.devloop
     _yes_coverage = _args.coverage or _args.devloop
 
     if _args.autofix:
         run_autofix()
 
-    if _yes_default or _args.test:
+    if _yes_test:
         run_tests(
             passthru_test_args=(_DEVLOOP_DJANGOTEST_ARGS if _args.devloop else ()),
             coverage=_yes_coverage,
         )
 
-    if _yes_default or _args.lint:
+    if _yes_lint:
         run_lint()
 
     if _yes_coverage:
