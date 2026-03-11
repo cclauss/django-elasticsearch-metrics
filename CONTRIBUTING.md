@@ -3,17 +3,21 @@
 
 ## Code conventions
 
+### type annotations
+
+### type annotations
+
 
 ## Setting up local devloop
 
-### 0. get the code
+### get a copy of the code
 for example:
 ```
 git clone https://github.com/CenterForOpenScience/django-elasticsearch-metrics.git djelme
 cd djelme
 ```
 
-### 1. put environment together
+### be in a fitting environment
 create and activate a [python virtual environment](https://docs.python.org/3.14/tutorial/venv.html)
 with python version 3.10+ -- there are many tools for this; you may already have your own way.
 

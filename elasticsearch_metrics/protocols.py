@@ -66,14 +66,11 @@ class ProtoCountedUsage(typing.Protocol):
     https://cop5.projectcounter.org/en/5.0.2/appendices/a-glossary-of-terms.html
     """
 
-    # counter:Platform
-    platform_iri: str
-    # counter:Database
-    database_iri: str
-    # counter:Session
-    sessionhour_id: str
-    # counter:Item
-    item_iri: str
+    platform_iri: str  # counter:Platform
+    database_iri: str  # counter:Database
+    sessionhour_id: str  # counter:Session
+    item_iri: str  # counter:Item
+
     # within_iris corresponds roughly to counter:Title, but as a more
     # inclusive within/part-of/contained-by relationship
     within_iris: list[str]
