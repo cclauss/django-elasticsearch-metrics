@@ -31,12 +31,14 @@ class Command(BaseCommand):
             )
             for (
                 _backend_name,
-                _recordtypes,
+                _each_recordtype,
             ) in djelme_registry.each_recordtype_by_backend(_app_label):
                 _backend = djelme_registry.get_backend(_backend_name)
-                self.stdout.write(f"  Using backend {_backend.backend_name!r}...")
-                for _recordtype in _recordtypes:
+                self.stdout.write(
+                    f"  Using backend {_backend.djelme_backend_name()!r}..."
+                )
+                for _recordtype in _each_recordtype:
                     self.stdout.write(f"  Setting up {_recordtype!r}...")
-                _backend.djelme_setup(_recordtypes)
+                _backend.djelme_setup(_each_recordtype)
 
         self.stdout.write("Synchronized recordtypes.", style.SUCCESS)

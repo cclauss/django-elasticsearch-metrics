@@ -300,6 +300,10 @@ class Metric(Document, BaseMetric):
         signals.post_save.send(cls, instance=self, using=using, index=index)
         return ret
 
+    def djelme_index_name(self) -> str:  # for ProtoDjelmeRecord
+        assert self.timestamp is not None
+        return self.get_index_name(self.timestamp)
+
     @classmethod
     def _default_index(cls, index=None):
         """Overrides Document._default_index so that .search, .get, etc.
@@ -338,6 +342,12 @@ class DjelmeElastic6Backend:
         # assumes `connections.configure` was already called
         return connections.get_connection(self.backend_name)
 
+    def djelme_backend_name(self) -> str:  # for ProtoDjelmeBackend
+        return self.backend_name
+
+    def djelme_imp_kwargs(self) -> dict[str, str]:  # for ProtoDjelmeBackend
+        return self.imp_kwargs
+
     def djelme_setup(self, recordtypes: collections.abc.Iterable[type]) -> None:
         for _metric_type in recordtypes:
             assert issubclass(_metric_type, Metric)
@@ -364,5 +374,8 @@ def djelme_when_ready(  # for ProtoDjelmeImp
     backends: Iterator[ProtoDjelmeBackend],
 ) -> None:
     connections.configure(
-        **{_backend.backend_name: _backend.imp_kwargs for _backend in backends}
+        **{
+            _backend.djelme_backend_name(): _backend.djelme_imp_kwargs()
+            for _backend in backends
+        }
     )

@@ -24,8 +24,8 @@ def no_style():
 def color_style():
     if color.supports_color():
         style = color.color_style()
-        style.TYPENAME = termcolors.make_style(opts=("bold",))  # type: ignore[attr-defined]
-        style.ES_TEMPLATE = termcolors.make_style(fg="yellow")  # type: ignore[attr-defined]
+        style.TYPENAME = termcolors.make_style(opts=("bold",))
+        style.ES_TEMPLATE = termcolors.make_style(fg="yellow")
     else:
         style = no_style()
     return style

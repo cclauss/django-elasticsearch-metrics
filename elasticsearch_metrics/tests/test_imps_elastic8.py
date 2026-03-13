@@ -5,7 +5,6 @@ from django.utils import timezone
 
 import elasticsearch8
 from elasticsearch8.dsl import (
-    Keyword,
     ComposableIndexTemplate,
     MetaField,
 )
@@ -178,7 +177,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_inheritance(self):
         class MyBaseRecord(djelme.TimeseriesRecord):
-            label: str = Keyword()
+            label: str
 
             class Index:
                 settings = {"number_of_shards": 2}
@@ -281,14 +280,15 @@ class TestCreateDocument(RealElasticTestCase, autosetup_djelme_backends=True):
         _doc.save()
         assert _doc.timestamp is not None
         _fetched_doc = ThingHappened.get(
-            id=_doc.meta.id, index=_doc.timeseries_index_name
+            id=_doc.meta.id, index=_doc.djelme_index_name()
         )
+        assert _fetched_doc
         assert _fetched_doc.timestamp == _doc.timestamp
         assert _fetched_doc.thing_id == _doc.thing_id == _thing_id
         assert _fetched_doc.happen_code == _doc.happen_code == _happen_code
 
         # index mappings should match the index template
-        name = _doc.timeseries_index_name
+        name = _doc.djelme_index_name()
         mapping = _es8_client().indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}

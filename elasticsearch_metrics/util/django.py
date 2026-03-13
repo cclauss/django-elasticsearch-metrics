@@ -28,4 +28,9 @@ def find_app_label_for_type(given_type: type) -> str:
             "doesn't declare an explicit app_label and isn't in an "
             "application in INSTALLED_APPS."
         )
-    return _nearest_containing_app_config.label
+    _label = _nearest_containing_app_config.label
+    if not (_label and isinstance(_label, str)):
+        raise exceptions.ImproperlyConfigured(
+            f"no label on app config {_nearest_containing_app_config!r}"
+        )
+    return _label

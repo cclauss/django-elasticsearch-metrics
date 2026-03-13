@@ -201,18 +201,18 @@ def test_something():
   }
   ```
 
-* `DJELME_AUTOSETUP`: Optional feature, default `False` -- set `True` to run backend setup
-  (like creating index templates in elasticsearch) automatically when your django app starts.
+* `DJELME_AUTOSETUP`: Optional feature, default `False` --
+    set `True` to run backend setup automatically when your django app starts
+    (like creating index templates in elasticsearch, if they don't already exist)
 
-* `DJELME_DEFAULT_TIMEDEPTH`: Number of "time parts" used to chunk records into timeseries indexes
+* `DJELME_DEFAULT_TIMEDEPTH`: Set the granularity of timeseries indexes by the number of "time parts" in index names
     ```
     DJELME_DEFAULT_TIMEDEPTH = 1  # yearly indexes; YYYY
     DJELME_DEFAULT_TIMEDEPTH = 2  # monthly indexes; YYYY_MM
     DJELME_DEFAULT_TIMEDEPTH = 3  # daily indexes; YYYY_MM_DD (this is the default)
     DJELME_DEFAULT_TIMEDEPTH = 4  # hourly indexes; YYYY_MM_DD_HH
-    -- the default `3` results in a daily index `YYYY_MM_DD`. For monthly indexes, set `DJELME_DEFAULT_TIMEDEPTH = 2`
-    indexes. Default: `%Y.%m.%d` (same date format Elasticsearch uses for
-    [date math](https://www.elastic.co/guide/en/elasticsearch/reference/current/date-math-index-names.html))
+    ```
+    you can also set `Meta.timedepth` on a specific record type; this will take precedence
 
 ## Management commands
 
