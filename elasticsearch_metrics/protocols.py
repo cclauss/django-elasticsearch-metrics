@@ -52,6 +52,7 @@ class ProtoDjelmeRecord(typing.Protocol):
 
     def djelme_index_name(self) -> str: ...
 
+    # TODO: ENG-9696
     # @classmethod
     # def search_timespan(
     #     cls,
@@ -59,6 +60,7 @@ class ProtoDjelmeRecord(typing.Protocol):
     #     until_when: tuple[int, ...] | datetime.date,
     #     **kwargs: typing.Any,
     # ) -> typing.Any: ...
+
     # @classmethod
     # def each_timeseries_index_status(cls) -> collections.abc.Iterable[str]: ...
 
