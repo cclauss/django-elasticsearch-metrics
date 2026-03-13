@@ -88,6 +88,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
                 _cls._defaults.setdefault(_fieldname, _default)
         # and register concrete record types with the djelme registry
         if not _cls.is_abstract:
+            assert issubclass(_cls, DjelmeRecordtype)
             _given_using = _cls._index._using
             _default_backend = (
                 _given_using
@@ -96,7 +97,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
                 else ""
             )
             djelme_registry.register_recordtype(
-                _cls,  # type: ignore[arg-type]
+                _cls,
                 imp_module_name=__name__,
                 app_label=_cls._get_meta_attr("app_label", None),
                 default_backend=_default_backend,
