@@ -1,14 +1,17 @@
 # Contributing
-(TODO: update)
+(TODO: expand)
 
-## Code conventions
+## code conventions
+
+### naming
+
+### docstrings
 
 ### type annotations
 
-### type annotations
+### ...
 
-
-## Setting up local devloop
+## setting up local devloop
 
 ### get a copy of the code
 for example:
@@ -19,18 +22,23 @@ cd djelme
 
 ### be in a fitting environment
 create and activate a [python virtual environment](https://docs.python.org/3.14/tutorial/venv.html)
-with python version 3.10+ -- there are many tools for this; you may already have your own way.
+with python version 3.10+ and [`poetry` for python package management](https://python-poetry.org) -- there are many ways to do this (including with `poetry` itself); you may already have your own way.
 
-(if you'd rather work with containers and `docker-compose`-likes, see below)
+(if you'd rather work with containers and `docker-compose`-likes, see `using docker-style container tools`, below)
 
 here's an example using `venv` (in python's standard lib) to create the virtual environment in a `.venv` directory, with bash:
 ```
 python -m venv .venv && source .venv/bin/activate
 ```
 
-install dependencies (listed in `pyproject.toml`), including the `dev` extra (and maybe `anydjango`) -- here's an example using `pip`:
+install [poetry](https://python-poetry.org):
 ```
-pip install -e '.[dev,anydjango]'
+pip install poetry
+```
+
+install the current project (in editable mode) and dependencies (with the `dev` dependency group and the extras `elastic6`, `elastic8`, `anydjango`):
+```
+poetry install --with=dev --extras=elastic6 --extras=elastic8 --extras=anydjango
 ```
 
 ### run tests and checks
@@ -38,7 +46,7 @@ pip install -e '.[dev,anydjango]'
 these expect elasticsearches to be running and configured in `elasticsearch_metrics/tests/settings.py` (or set environment variables `ELASTICSEARCH6_URL` and `ELASTICSEARCH8_URL`) -- see `using docker-style container tools`, below, for one way to do that
 
 running the python module `elasticsearch_metrics.tests` will run tests and linting checks
--- should always pass before merging to `main`
+-- any code merged to `main` should pass for all supported python and django combinations
 
 ```
 python -m elasticsearch_metrics.tests
@@ -46,13 +54,17 @@ python -m elasticsearch_metrics.tests
 without args, equivalent to `--test --lint`
 
 optional args:
-- `--devloop`: shorthand for `--test --lint --coverage`; also adds `--failfast --pdb` to test args
+- `--test`: run tests and display code coverage report
 - `--lint`: run linting checks
-- `--test`: run tests
-- `--coverage`: gather code-coverage when running tests and print coverage report
 - `--autofix`: autofix linting errors; autoformat code
-- any additional args passed thru to `django-admin test`
+- `--no-coverage`: skip gathering and reporting code coverage
 
+any additional args are passed thru to [django-admin test](https://docs.djangoproject.com/en/5.2/ref/django-admin/#test)
+
+example devloop:
+```
+python -m elasticsearch_metrics.tests --failfast --pdb
+```
 see `elasticsearch_metrics/tests/__main__.py` for more details
 
 ### Run the shell with:
@@ -77,7 +89,7 @@ tox
 ```
 
 ### (optional) using docker-style container tools
-see `testbox.Containerfile` and `docker-compose.yml` -- running `testbox` runs `python -m elasticsearch_metrics.tests`
+see `testbox.Containerfile` and `docker-compose.yml` for a local setup -- running `testbox` runs `python -m elasticsearch_metrics.tests`
 
 (note: examples use `pc` aliased to a `docker-compose` equivalent)
 
