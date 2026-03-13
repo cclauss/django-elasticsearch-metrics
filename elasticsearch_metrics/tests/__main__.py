@@ -74,7 +74,7 @@ if __name__ == "__main__":
     _no_args = not any((_args.lint, _args.test, _args.autofix))
     _yes_test = _no_args or _args.test
     _yes_lint = _no_args or _args.lint
-    _yes_coverage = not _args.no_coverage
+    _yes_coverage = _yes_test and not _args.no_coverage
 
     if _args.autofix:
         run_autofix()
