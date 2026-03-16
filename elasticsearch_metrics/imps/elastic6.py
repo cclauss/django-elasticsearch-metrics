@@ -50,7 +50,12 @@ class ReadonlyAttrMap:
 
 def _get_default_using():
     """get the elasticsearch-dsl connection name to use"""
-    (_backend_name,) = djelme_registry.each_backend_name(imp_module_name=__name__)
+    _available_backends = djelme_registry.each_backend_name(imp_module_name=__name__)
+    try:
+        (_backend_name,) = _available_backends
+    except ValueError:
+        logger.warning(f"no djelme backends configured using imp module {__name__!r}!")
+        return None
     return _backend_name
 
 
