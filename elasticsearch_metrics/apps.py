@@ -57,10 +57,7 @@ def _each_backend_setting() -> (
             if not (
                 isinstance(_imp_module_name, str)
                 and isinstance(_imp_kwargs, dict)
-                and all(
-                    isinstance(_k, str) and isinstance(_v, str)
-                    for _k, _v in _imp_kwargs.items()
-                )
+                and all(isinstance(_k, str) for _k in _imp_kwargs.keys())
             ):
                 raise ImproperlyConfigured(
                     BACKENDS_SETTING,
