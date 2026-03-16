@@ -26,15 +26,7 @@ import django
 from django.conf import settings
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8 import Elasticsearch as Elastic8Client
-from elasticsearch8.dsl import (
-    Document,
-    connections,
-    ComposableIndexTemplate,
-    mapped_field,
-    Keyword,
-)
-from elasticsearch8.dsl._sync.document import IndexMeta
-from elasticsearch8.dsl.document_base import DocumentOptions
+from elasticsearch8 import dsl as esdsl
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
@@ -55,11 +47,11 @@ _DEFAULT_TIMEDEPTH = 3  # xxxx_xx_xx_ (daily)
 # invasive hacky changes to elasticsearch8.dsl
 
 # change default mapping for `str` annotations from Text to Keyword:
-DocumentOptions.type_annotation_map[str] = (Keyword, {})
+esdsl.document_base.DocumentOptions.type_annotation_map[str] = (esdsl.Keyword, {})
 
 
 # changes to document metaclass behavior
-class _DjelmeRecordtypeMetaclass(IndexMeta):
+class _DjelmeRecordtypeMetaclass(esdsl._sync.document.IndexMeta):
     """Metaclass for the base `DjelmeRecordtype` class.
 
     overrides behavior in elasticsearch-py's `IndexMeta` to allow
@@ -117,7 +109,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
         return djelme_registry.get_recordtype_app_label(self)
 
 
-class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
+class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
     """a subclass of elasticsearch8.dsl.Document, with conveniences
 
     >>> class MyAbstractRecord(DjelmeRecordtype):
@@ -145,7 +137,7 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
     """
 
     UNIQUE_TOGETHER_FIELDS: typing.ClassVar[collections.abc.Iterable[str]] = ()
-    unique_id: str = mapped_field(Keyword(), default="")  # filled on save
+    unique_id: str = esdsl.mapped_field(esdsl.Keyword(), default="")  # filled on save
 
     class Meta:
         abstract = True
@@ -229,7 +221,7 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
 
 
 class TimeseriesRecord(DjelmeRecordtype):
-    timestamp: datetime.datetime = mapped_field(
+    timestamp: datetime.datetime = esdsl.mapped_field(
         default_factory=lambda: django.utils.timezone.now()
     )
 
@@ -251,6 +243,24 @@ class TimeseriesRecord(DjelmeRecordtype):
         return super().init(
             index=(index or cls.format_timeseries_index_name()),
             using=cls._get_using(using),
+        )
+
+    @classmethod
+    def search_timespan(
+        cls,
+        from_when: tuple[int, ...] | datetime.date,
+        until_when: tuple[int, ...] | datetime.date,
+        **kwargs: typing.Any,
+    ) -> esdsl.Search:
+        _index_pattern = timeseries_naming.format_index_pattern_for_range(
+            cls.get_timeseries_name_prefix(),
+            cls.get_timeseries_recordtype_name(),
+            from_when,
+            until_when,
+            timedepth=cls.get_timedepth(),
+        )
+        return cls.search(index=_index_pattern).filter(
+            esdsl.query.Range("timestamp", gte=..., lt=...)
         )
 
     @classmethod
@@ -277,7 +287,7 @@ class TimeseriesRecord(DjelmeRecordtype):
         )
 
     @classmethod
-    def get_timeseries_template(cls) -> ComposableIndexTemplate:
+    def get_timeseries_template(cls) -> esdsl.ComposableIndexTemplate:
         return cls._index.as_composable_template(
             template_name=cls.get_timeseries_template_name(),
             pattern=cls.format_timeseries_index_pattern(),
@@ -444,11 +454,11 @@ class CountedUsageRecord(EventRecord):
     """
 
     # for ProtoCountedUsage:
-    platform_iri: str = mapped_field(required=True, default="")
-    database_iri: str = mapped_field(required=True, default="")
-    item_iri: str = mapped_field(required=True, default="")
-    sessionhour_id: str = mapped_field(Keyword(), default="")
-    within_iris: list[str] = mapped_field(Keyword(), default_factory=list)
+    platform_iri: str = esdsl.mapped_field(required=True, default="")
+    database_iri: str = esdsl.mapped_field(required=True, default="")
+    item_iri: str = esdsl.mapped_field(required=True, default="")
+    sessionhour_id: str = esdsl.mapped_field(esdsl.Keyword(), default="")
+    within_iris: list[str] = esdsl.mapped_field(esdsl.Keyword(), default_factory=list)
 
     class Meta:
         abstract = True
@@ -518,7 +528,7 @@ class DjelmeElastic8Backend:
     @property
     def elastic8_client(self) -> Elastic8Client:
         # assumes `connections.configure` was already called
-        return connections.get_connection(self._elastic8dsl_connection_name)
+        return esdsl.connections.get_connection(self._elastic8dsl_connection_name)
 
     @property
     def _elastic8dsl_connection_name(self) -> str:
@@ -556,7 +566,7 @@ djelme_backend = DjelmeElastic8Backend  # for ProtoDjelmeImp
 def djelme_when_ready(  # for ProtoDjelmeImp
     backends: collections.abc.Iterable[ProtoDjelmeBackend],
 ) -> None:
-    connections.configure(
+    esdsl.connections.configure(
         **{
             _backend._elastic8dsl_connection_name: _backend._elastic8dsl_connection_kwargs
             for _backend in backends

@@ -222,37 +222,50 @@ def format_index_pattern_for_timerange(
     )
 
 
-def format_index_pattern_for_daterange(
+def format_index_pattern_for_range(
     prefix: str,
     recordtype: str,
-    from_date: datetime.date,
-    until_date: datetime.date,
+    from_when: tuple[int, ...] | datetime.date,
+    until_when: tuple[int, ...] | datetime.date,
     timedepth: int,
     include_less_granular: bool = False,
 ) -> str:
     """get an index-name pattern for all indexes within a date range
-    >>> format_index_pattern_for_daterange('ap', 'rt',
+    >>> format_index_pattern_for_range('ap', 'rt',
     ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
     ...     timedepth=2)
     'ap_rt_2050_05_*'
-    >>> format_index_pattern_for_daterange('ap', 'rt',
+    >>> format_index_pattern_for_range('ap', 'rt',
     ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
     ...     timedepth=2, include_less_granular=True)
     'ap_rt_,ap_rt_2050_,ap_rt_2050_05_*'
-    >>> format_index_pattern_for_daterange('ap', 'rt',
-    ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
+    >>> format_index_pattern_for_range('ap', 'rt',
+    ...     datetime.date(2050, 5, 5), (2050, 5, 8, 10),
     ...     timedepth=3)
     'ap_rt_2050_05_05_*,ap_rt_2050_05_06_*,ap_rt_2050_05_07_*'
-    >>> format_index_pattern_for_daterange('ap', 'rt',
-    ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
+    >>> format_index_pattern_for_range('ap', 'rt',
+    ...     (2050, 5, 5, 3), datetime.date(2050, 5, 8),
     ...     timedepth=3, include_less_granular=True)
     'ap_rt_,ap_rt_2050_,ap_rt_2050_05_,ap_rt_2050_05_05_*,ap_rt_2050_05_06_*,ap_rt_2050_05_07_*'
+    >>> format_index_pattern_for_range('ap', 'rt',
+    ...     (200, 5), datetime.date(200, 5, 8),
+    ...     timedepth=3)
     """
+    _from_timeparts = (
+        timeparts_from_date(from_when, timedepth)
+        if isinstance(from_when, datetime.date)
+        else from_when
+    )
+    _until_timeparts = (
+        timeparts_from_date(until_when, timedepth)
+        if isinstance(until_when, datetime.date)
+        else until_when
+    )
     return format_index_pattern_for_timerange(
         prefix,
         recordtype,
-        timeparts_from_date(from_date, timedepth),
-        timeparts_from_date(until_date, timedepth),
+        _from_timeparts,
+        _until_timeparts,
         timedepth=timedepth,
         include_less_granular=include_less_granular,
         only_datelike=True,
