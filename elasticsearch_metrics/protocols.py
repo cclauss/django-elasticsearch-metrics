@@ -1,5 +1,6 @@
 from __future__ import annotations
 import collections
+import datetime
 import typing
 
 __all__ = (
@@ -53,7 +54,7 @@ class ProtoDjelmeRecord(typing.Protocol):
     def djelme_index_name(self) -> str: ...
 
     @classmethod
-    def search_timespan(
+    def search_timeseries_range(
         cls,
         from_when: tuple[int, ...] | datetime.date,
         until_when: tuple[int, ...] | datetime.date,

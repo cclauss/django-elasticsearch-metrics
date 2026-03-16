@@ -27,6 +27,7 @@ from django.conf import settings
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8 import Elasticsearch as Elastic8Client
 from elasticsearch8 import dsl as esdsl
+from elasticsearch8._sync.document import IndexMeta
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
@@ -51,7 +52,7 @@ esdsl.document_base.DocumentOptions.type_annotation_map[str] = (esdsl.Keyword, {
 
 
 # changes to document metaclass behavior
-class _DjelmeRecordtypeMetaclass(esdsl._sync.document.IndexMeta):
+class _DjelmeRecordtypeMetaclass(IndexMeta):
     """Metaclass for the base `DjelmeRecordtype` class.
 
     overrides behavior in elasticsearch-py's `IndexMeta` to allow
@@ -224,6 +225,7 @@ class TimeseriesRecord(DjelmeRecordtype):
     timestamp: datetime.datetime = esdsl.mapped_field(
         default_factory=lambda: django.utils.timezone.now()
     )
+    timeparts: str = esdsl.mapped_field(esdsl.Version())
 
     class Meta:
         abstract = True
@@ -246,22 +248,17 @@ class TimeseriesRecord(DjelmeRecordtype):
         )
 
     @classmethod
-    def search_timespan(
+    def search_timeseries_range(
         cls,
         from_when: tuple[int, ...] | datetime.date,
         until_when: tuple[int, ...] | datetime.date,
         **kwargs: typing.Any,
     ) -> esdsl.Search:
-        _index_pattern = timeseries_naming.format_index_pattern_for_range(
-            cls.get_timeseries_name_prefix(),
-            cls.get_timeseries_recordtype_name(),
-            from_when,
-            until_when,
-            timedepth=cls.get_timedepth(),
+        _index_pattern = cls.format_timeseries_index_pattern_for_range(
+            from_when, until_when
         )
-        return cls.search(index=_index_pattern).filter(
-            esdsl.query.Range("timestamp", gte=..., lt=...)
-        )
+        _timestamp_q = esdsl.query.Range("timestamp", gte=..., lt=...)
+        return cls.search(index=_index_pattern).filter(_timestamp_q)
 
     @classmethod
     def _djelme_teardown(cls, es8_client: Elastic8Client) -> None:
@@ -320,6 +317,20 @@ class TimeseriesRecord(DjelmeRecordtype):
             recordtype=cls.get_timeseries_recordtype_name(),
             timeparts=timeparts,
             max_timedepth=cls.get_timedepth(),
+        )
+
+    @classmethod
+    def format_timeseries_index_pattern_for_range(
+        cls,
+        from_when: tuple[int, ...] | datetime.date,
+        until_when: tuple[int, ...] | datetime.date,
+    ) -> str:
+        return timeseries_naming.format_index_pattern_for_range(
+            cls.get_timeseries_name_prefix(),
+            cls.get_timeseries_recordtype_name(),
+            from_when,
+            until_when,
+            timedepth=cls.get_timedepth(),
         )
 
     @classmethod
@@ -467,9 +478,9 @@ class CountedUsageRecord(EventRecord):
     def record(
         cls,
         *,
-        # each usage record needs a sessionhour_id -- for migrating old data, can set explicitly
+        # each usage record needs a sessionhour_id -- for migrating old data, can set explicitly...
         sessionhour_id: str = "",
-        # ...but when saving new data, give either the dirty identifying strings
+        # ...but when saving new data, give either the dirty identifying strings:
         user_id: str = "",
         session_id: str = "",
         request_host: str = "",
