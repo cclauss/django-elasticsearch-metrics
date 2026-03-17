@@ -258,6 +258,13 @@ class TimeseriesRecord(DjelmeRecordtype):
         )
 
     @classmethod
+    def search(cls, *, index=None, **kwargs):
+        return super().search(
+            index=(index or cls.format_timeseries_index_pattern()),
+            **kwargs,
+        )
+
+    @classmethod
     def search_timeseries_range(
         cls,
         from_when: tuple[int, ...] | datetime.date,

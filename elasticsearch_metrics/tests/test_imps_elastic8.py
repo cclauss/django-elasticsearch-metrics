@@ -216,6 +216,7 @@ class TestRecord(MockSaveTestCase):
         p = ThingHappened.record(timestamp=timestamp, thing_id="abc12")
         assert self.mocked_es8_save.call_count == 1
         assert p.timestamp == timestamp
+        assert p.timestamp_parts == "2017.8.21.0.0.0"
         assert p.thing_id == "abc12"
 
     @unittest.mock.patch.object(timezone, "now")
@@ -272,7 +273,7 @@ class TestSignals(MockSaveTestCase):
         assert post_save_kwargs["sender"] is ThingHappened
 
 
-class TestCreateDocument(RealElasticTestCase, autosetup_djelme_backends=True):
+class TestCreateAndSearch(RealElasticTestCase, autosetup_djelme_backends=True):
     def test_create_document(self):
         _thing_id = "12345"
         _happen_code = "zyxwv"
@@ -294,6 +295,8 @@ class TestCreateDocument(RealElasticTestCase, autosetup_djelme_backends=True):
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}
         assert properties["happen_code"] == {"type": "keyword"}
+
+    def test_search(self): ...  # TODO
 
 
 class TestInit(RealElasticTestCase, autosetup_djelme_backends=False):
