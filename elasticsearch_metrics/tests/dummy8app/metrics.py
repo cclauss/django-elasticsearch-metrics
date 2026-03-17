@@ -37,7 +37,7 @@ class ThingHappened(djelme.EventRecord):
 
     class Meta:
         timeseries_recordtype_name = "happen"
-        timedepth = 2
+        timedepth = 1
 
 
 # TODO: tests using ThingHappeningsReport

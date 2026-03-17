@@ -4,21 +4,21 @@ a convenience for running with `python3 -m elasticsearch_metrics.tests`
 """
 
 import argparse
+import collections
 import os
 import subprocess
-
-_DEVLOOP_DJANGOTEST_ARGS = ("--failfast", "--pdb")
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--lint", action="store_true")  # _args.lint
 _parser.add_argument("--test", action="store_true")  # _args.test
 _parser.add_argument("--autofix", action="store_true")  # _args.autofix
-_parser.add_argument("-d", "--devloop", action="store_true")  # _args.devloop
-_parser.add_argument("-c", "--coverage", action="store_true")  # _args.coverage
-_parser.add_argument("passthru_test_args", nargs="*")
+_parser.add_argument("--no-coverage", action="store_true")  # _args.no_coverage
 
 
-def run_tests(passthru_test_args: tuple[str, ...] = (), coverage: bool = False) -> None:
+def run_tests(
+    passthru_test_args: collections.abc.Iterable[str] = (),
+    coverage: bool = False,
+) -> None:
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE", "elasticsearch_metrics.tests.settings"
     )
@@ -46,7 +46,7 @@ def _run(*args: str, header: str = "") -> None:
 def run_lint() -> None:
     _run("poetry", "run", "flake8")
     _run("poetry", "run", "black", "--check", ".")
-    # TODO: figure out why mypy runs differently in a container?
+    # TODO: passing mypy config
     # _run("poetry", "run", "mypy", "elasticsearch_metrics")
 
 
@@ -69,20 +69,20 @@ def _print_coverage_report() -> None:
 
 
 if __name__ == "__main__":
-    _args = _parser.parse_args()
-    _yes_default = not any((_args.test, _args.lint, _args.autofix))
-    _yes_coverage = _args.coverage or _args.devloop
+    _args, _other_args = _parser.parse_known_args()
+    # running without args same as `--test --lint`
+    _no_args = not any((_args.lint, _args.test, _args.autofix))
+    _yes_test = _no_args or _args.test
+    _yes_lint = _no_args or _args.lint
+    _yes_coverage = _yes_test and not _args.no_coverage
 
     if _args.autofix:
         run_autofix()
 
-    if _yes_default or _args.test:
-        run_tests(
-            passthru_test_args=(_DEVLOOP_DJANGOTEST_ARGS if _args.devloop else ()),
-            coverage=_yes_coverage,
-        )
+    if _yes_test:
+        run_tests(passthru_test_args=_other_args, coverage=_yes_coverage)
 
-    if _yes_default or _args.lint:
+    if _yes_lint:
         run_lint()
 
     if _yes_coverage:

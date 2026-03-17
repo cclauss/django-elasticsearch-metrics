@@ -42,7 +42,7 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
     def __init_subclass__(
         cls,
         /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, autosetup_djelme_backends=False)
-        autosetup_djelme_backends: bool = True,
+        autosetup_djelme_backends: bool,  # required
         autoteardown_djelme_backends: bool = True,
         **kwargs: typing.Any,
     ):

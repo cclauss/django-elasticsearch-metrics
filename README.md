@@ -14,7 +14,7 @@ python importables:
 
 * Python >=3.10
 * Django 4.2, 5.1, or 5.2
-* Elasticsearch 6 or 8
+* Elasticsearch 8 (or 6, for deprecated back-compat)
 
 ## Install
 
@@ -69,7 +69,6 @@ DJELME_AUTOSETUP = True
 
 ...or be sure to run the `djelme_backend_setup` management command before trying to store anything.
 ```shell
-# This will 
 # This will create an index template for usagerecord timeseries indexes
 python manage.py djelme_backend_setup
 ```
@@ -94,8 +93,8 @@ UsageRecord.search()
 
 ## Timeseries indexes
 
-By default, behind the scenes, a new index is created for each record type for each month
-in which a record is saved (using UTC timezone). You can change the per-index timespan by
+By default, behind the scenes, a new elasticsearch index is created for each record type for each month
+in which a record is saved (using UTC timezone). You can set a default change the per-index timespan by
 setting `Meta.timedepth` on the record type.
 
 - index per day, '...YYYY_MM_DD...': `timedepth = 3`
@@ -185,7 +184,7 @@ def test_something():
 
 ## Configuration
 
-* `DJELME_TIMESERIES_BACKENDS`: Named backends for storing or searching records from your django app
+* `DJELME_BACKENDS`: Named backends for storing or searching records from your django app
   -- nested mapping from backend name (any string, your choice) to python-importable paths
   for modules that (like `"elasticsearch_metrics.imps.elastic8"`)
   to "imp kwargs" config dictionaries given to the imp module's `djelme_backend` constructor
@@ -202,12 +201,18 @@ def test_something():
   }
   ```
 
-* `DJELME_AUTOSETUP`: Optional feature, default `False` -- set `True` for backend setup
-  (like creating index templates in elasticsearch) to run automatically when your django app starts.
+* `DJELME_AUTOSETUP`: Optional feature, default `False` --
+    set `True` to run backend setup automatically when your django app starts
+    (like creating index templates in elasticsearch, if they don't already exist)
 
-* `ELASTICSEARCH_METRICS_DATE_FORMAT`: Date format to use when creating
-    indexes. Default: `%Y.%m.%d` (same date format Elasticsearch uses for
-    [date math](https://www.elastic.co/guide/en/elasticsearch/reference/current/date-math-index-names.html))
+* `DJELME_DEFAULT_TIMEDEPTH`: Set the granularity of timeseries indexes by the number of "time parts" in index names
+    ```
+    DJELME_DEFAULT_TIMEDEPTH = 1  # yearly indexes; YYYY
+    DJELME_DEFAULT_TIMEDEPTH = 2  # monthly indexes; YYYY_MM
+    DJELME_DEFAULT_TIMEDEPTH = 3  # daily indexes; YYYY_MM_DD (this is the default)
+    DJELME_DEFAULT_TIMEDEPTH = 4  # hourly indexes; YYYY_MM_DD_HH
+    ```
+    you can also set `Meta.timedepth` on a specific record type; this will take precedence
 
 ## Management commands
 

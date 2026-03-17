@@ -5,7 +5,6 @@ from django.utils import timezone
 
 import elasticsearch8
 from elasticsearch8.dsl import (
-    Keyword,
     ComposableIndexTemplate,
     MetaField,
 )
@@ -42,22 +41,63 @@ class TestFormatIndexName(SimpleDjelmeTestCase):
     def test_format_timeseries_index_name(self):
         date = dt.date(2020, 2, 14)
         self.assertEqual(
+            Dummy8Event.format_timeseries_index_name(date),
+            "dummy8app_dummy8event_2020_02_14_",
+        )
+
+    def test_format_timeseries_index_name__cls_timedepth(self):
+        date = dt.date(2020, 2, 14)
+        self.assertEqual(
             ThingHappened.format_timeseries_index_name(date),
-            "dummy8app_happen_2020_02_",
+            "dummy8app_happen_2020_",
         )
         self.assertEqual(
             ThingHappeningsReport.format_timeseries_index_name(date),
-            "blarg_thinghappeningsreport_2020_02_",
+            "blarg_thinghappeningsreport_2020_02_14_",
         )
 
     def test_format_index_name_respects_date_format_setting(self):
-        with unittest.mock.patch.object(
-            ThingHappened.Meta, "timedepth", 4, create=True
-        ):
+        with self.settings(DJELME_DEFAULT_TIMEDEPTH=4):
             date = dt.date(2020, 2, 14)
             self.assertEqual(
+                Dummy8Event.format_timeseries_index_name(date),
+                "dummy8app_dummy8event_2020_02_14_00_",
+            )
+            self.assertEqual(
                 ThingHappened.format_timeseries_index_name(date),
-                "dummy8app_happen_2020_02_14_00_",
+                "dummy8app_happen_2020_",  # ThingHappened.Meta has timedepth=1
+            )
+
+
+class TestFormatIndexPattern(SimpleDjelmeTestCase):
+    def test_format_timeseries_index_pattern(self):
+        _timeparts = (2020, 2, 14, 0, 1, 2)
+        self.assertEqual(
+            Dummy8Event.format_timeseries_index_pattern(_timeparts),
+            "dummy8app_dummy8event_2020_02_14_*",
+        )
+
+    def test_format_timeseries_index_pattern__cls_timedepth(self):
+        _timeparts = (2020, 2, 14)
+        self.assertEqual(
+            ThingHappened.format_timeseries_index_pattern(_timeparts),
+            "dummy8app_happen_2020_*",
+        )
+        self.assertEqual(
+            ThingHappeningsReport.format_timeseries_index_pattern(_timeparts),
+            "blarg_thinghappeningsreport_2020_02_14_*",
+        )
+
+    def test_format_index_pattern_respects_date_format_setting(self):
+        with self.settings(DJELME_DEFAULT_TIMEDEPTH=4):
+            _timeparts = (2020, 2, 14, 0, 1, 2)
+            self.assertEqual(
+                Dummy8Event.format_timeseries_index_pattern(_timeparts),
+                "dummy8app_dummy8event_2020_02_14_00_*",
+            )
+            self.assertEqual(
+                ThingHappened.format_timeseries_index_pattern(_timeparts),
+                "dummy8app_happen_2020_*",  # ThingHappened.Meta has timedepth=1
             )
 
 
@@ -137,7 +177,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_inheritance(self):
         class MyBaseRecord(djelme.TimeseriesRecord):
-            label: str = Keyword()
+            label: str
 
             class Index:
                 settings = {"number_of_shards": 2}
@@ -232,7 +272,7 @@ class TestSignals(MockSaveTestCase):
         assert post_save_kwargs["sender"] is ThingHappened
 
 
-class TestCreateDocument(RealElasticTestCase):
+class TestCreateDocument(RealElasticTestCase, autosetup_djelme_backends=True):
     def test_create_document(self):
         _thing_id = "12345"
         _happen_code = "zyxwv"
@@ -240,14 +280,15 @@ class TestCreateDocument(RealElasticTestCase):
         _doc.save()
         assert _doc.timestamp is not None
         _fetched_doc = ThingHappened.get(
-            id=_doc.meta.id, index=_doc.timeseries_index_name
+            id=_doc.meta.id, index=_doc.djelme_index_name()
         )
+        assert _fetched_doc
         assert _fetched_doc.timestamp == _doc.timestamp
         assert _fetched_doc.thing_id == _doc.thing_id == _thing_id
         assert _fetched_doc.happen_code == _doc.happen_code == _happen_code
 
         # index mappings should match the index template
-        name = _doc.timeseries_index_name
+        name = _doc.djelme_index_name()
         mapping = _es8_client().indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}

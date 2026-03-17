@@ -17,7 +17,9 @@ def find_app_label_for_type(given_type: type) -> str:
     )
     _nearest_containing_app_config = max(
         _containing_app_configs,
-        key=lambda _config: len(_config.module.__name__),  # type: ignore[union-attr]
+        key=lambda _config: (
+            len(_config.module.__name__) if (_config.module is not None) else -1
+        ),
         default=None,
     )
     if _nearest_containing_app_config is None:
@@ -26,4 +28,9 @@ def find_app_label_for_type(given_type: type) -> str:
             "doesn't declare an explicit app_label and isn't in an "
             "application in INSTALLED_APPS."
         )
-    return _nearest_containing_app_config.label
+    _label = _nearest_containing_app_config.label
+    if not (_label and isinstance(_label, str)):
+        raise exceptions.ImproperlyConfigured(
+            f"no label on app config {_nearest_containing_app_config!r}"
+        )
+    return _label

@@ -1,6 +1,6 @@
 [project]
 name = "django-elasticsearch-metrics"
-version = "2026.0.0"
+version = "2026.0.3"
 description = "Django app for storing time-series metrics in Elasticsearch."
 authors = [
     {name = "CenterForOpenScience", email = "support@cos.io"}
@@ -36,7 +36,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-[project.optional-dependencies]
+[project.optional-dependencies]  # installable extras
 elastic6 = [ "elasticsearch6-dsl>=6.3.0,<7.0.0" ]
 elastic8 = [ "elasticsearch8>=8.0.0,<9.0.0" ]
 # elastic9 = [ "elasticsearch9>=9.0.0,<10.0.0" ]
@@ -50,7 +50,7 @@ changelog = "https://github.com/CenterForOpenScience/django-elasticsearch-metric
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[dependency-groups]
+[dependency-groups]  # not extras; only for development
 tests = [
     "factory-boy==3.3.3",
     "tox>=4.0.0",

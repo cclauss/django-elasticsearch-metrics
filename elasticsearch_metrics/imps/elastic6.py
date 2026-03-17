@@ -3,6 +3,7 @@
 consider this code frozen/deprecated -- will be removed once no longer needed
 """
 
+from __future__ import annotations
 import collections
 from collections.abc import Iterator
 import dataclasses
@@ -13,10 +14,12 @@ from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 from elasticsearch6.exceptions import NotFoundError
-import elasticsearch6_dsl
 from elasticsearch6_dsl import Document, connections, Date
 from elasticsearch6_dsl.document import IndexMeta, MetaField
 from elasticsearch6_dsl.index import Index
+
+# re-export all fields, for back-compat convenience
+from elasticsearch6_dsl.field import *  # noqa: F40
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
@@ -26,8 +29,6 @@ from elasticsearch_metrics.registry import djelme_registry
 DEFAULT_DATE_FORMAT = "%Y.%m.%d"
 
 logger = logging.getLogger(__name__)
-
-fields = elasticsearch6_dsl.field
 
 
 class ReadonlyAttrMap:
@@ -49,7 +50,12 @@ class ReadonlyAttrMap:
 
 def _get_default_using():
     """get the elasticsearch-dsl connection name to use"""
-    (_backend_name,) = djelme_registry.each_backend_name(imp_module_name=__name__)
+    _available_backends = djelme_registry.each_backend_name(imp_module_name=__name__)
+    try:
+        (_backend_name,) = _available_backends
+    except ValueError:
+        logger.warning(f"no djelme backends configured using imp module {__name__!r}!")
+        return None
     return _backend_name
 
 
@@ -294,6 +300,10 @@ class Metric(Document, BaseMetric):
         signals.post_save.send(cls, instance=self, using=using, index=index)
         return ret
 
+    def djelme_index_name(self) -> str:  # for ProtoDjelmeRecord
+        assert self.timestamp is not None
+        return self.get_index_name(self.timestamp)
+
     @classmethod
     def _default_index(cls, index=None):
         """Overrides Document._default_index so that .search, .get, etc.
@@ -332,6 +342,12 @@ class DjelmeElastic6Backend:
         # assumes `connections.configure` was already called
         return connections.get_connection(self.backend_name)
 
+    def djelme_backend_name(self) -> str:  # for ProtoDjelmeBackend
+        return self.backend_name
+
+    def djelme_imp_kwargs(self) -> dict[str, str]:  # for ProtoDjelmeBackend
+        return self.imp_kwargs
+
     def djelme_setup(self, recordtypes: collections.abc.Iterable[type]) -> None:
         for _metric_type in recordtypes:
             assert issubclass(_metric_type, Metric)
@@ -358,5 +374,8 @@ def djelme_when_ready(  # for ProtoDjelmeImp
     backends: Iterator[ProtoDjelmeBackend],
 ) -> None:
     connections.configure(
-        **{_backend.backend_name: _backend.imp_kwargs for _backend in backends}
+        **{
+            _backend.djelme_backend_name(): _backend.djelme_imp_kwargs()
+            for _backend in backends
+        }
     )

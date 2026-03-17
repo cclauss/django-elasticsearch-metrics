@@ -23,7 +23,7 @@ import itertools
 _DELIMITER: str = "_"
 _TIMEPART_MIN_LEN: int = 2
 _TEMPLATE_NAME_SUFFIX = "_template"
-_MAX_INDEXPATTERN_COMMAS: int = 5
+_DEFAULT_PATTERN_FANOUT: int = 3
 
 
 TimeseriesIndexNamePattern = tuple[str, str, tuple[int, ...]]
@@ -32,18 +32,24 @@ TimeseriesIndexNamePattern = tuple[str, str, tuple[int, ...]]
 def format_index_name(
     prefix: str,
     recordtype: str,
-    timeparts: collections.abc.Iterable[int] = (),  # empty () -- all time
+    timeparts: collections.abc.Sequence[int] = (),  # empty () -- all time
+    max_timedepth: int | None = None,
 ) -> str:
     """get a full/specific index name, no wildcards or lists
-    >>> format_index_name('aoeu', 'mynote', (9999,22))
-    'aoeu_mynote_9999_22_'
+    >>> format_index_name('a', 'rt', (9999, 22))
+    'a_rt_9999_22_'
+    >>> format_index_name('a', 'rt', (9999, 22, 0))
+    'a_rt_9999_22_00_'
     """
     _parts = [
         format_namepart(prefix),
         format_namepart(recordtype),
     ]
     if timeparts:
-        _parts.append(_format_timename(*timeparts))
+        _trimmed_timeparts = (
+            timeparts if (max_timedepth is None) else timeparts[:max_timedepth]
+        )
+        _parts.append(_format_timename(*_trimmed_timeparts))
     _parts.append(
         ""
     )  # always end with the delimiter, to match wildcard pattern `foo_bar_123_*`
@@ -58,8 +64,8 @@ def format_index_name_for_date(
     timedepth: int,
 ) -> str:
     """get a full/specific index name, no wildcards or lists
-    >>> format_index_name_for_date(datetime.date(9876,5,4), prefix='aoeu', recordtype='mynote', timedepth=2)
-    'aoeu_mynote_9876_05_'
+    >>> format_index_name_for_date(datetime.date(9876,5,4), prefix='ap', recordtype='rt', timedepth=2)
+    'ap_rt_9876_05_'
     """
     return format_index_name(
         prefix, recordtype, timeparts_from_date(given_date, timedepth)
@@ -69,71 +75,150 @@ def format_index_name_for_date(
 def format_index_pattern(
     prefix: str,
     recordtype: str,
-    timeparts: collections.abc.Iterable[int] = (),  # empty () -- all time
+    timeparts: collections.abc.Sequence[int] = (),  # empty () -- all time
+    max_timedepth: int | None = None,
 ) -> str:
     """get an index-name pattern for all indexes within the given timeparts
-    >>> format_index_pattern('aoeu', 'mynote', (9999,22))
-    'aoeu_mynote_9999_22_*'
+    >>> format_index_pattern('a', 'rt', (9999,22))
+    'a_rt_9999_22_*'
+    >>> format_index_pattern('a', 'rt', (1, 2, 3, 4, 5))
+    'a_rt_01_02_03_04_05_*'
+    >>> format_index_pattern('a', 'rt', (1, 2, 3, 4, 5), max_timedepth=3)
+    'a_rt_01_02_03_*'
     """
-    return f"{format_index_name(prefix, recordtype, timeparts)}*"
+    return f"{format_index_name(prefix, recordtype, timeparts, max_timedepth)}*"
 
 
-# def _each_timeparts_for_timerange(
-#     from_timeparts: collections.abc.Sequence[int],
-#     thru_timeparts: collections.abc.Sequence[int],
-#     max_timedepth: int,
-# ) -> collections.abc.Generator[tuple[int, ...]]:
-#     """
-#     yield timeparts to cover the given timerange (in no particular order)
-#
-#     >>> sorted(_each_timeparts_for_timerange((1999, 2), (1999, 3), max_timedepth=1))
-#     [(1999,)]
-#     >>> sorted(_each_timeparts_for_timerange((1999, 2), (1999, 11)))
-#     >>> sorted(_each_timeparts_for_timerange((1999, 2), (2000, 11)))
-#     >>> sorted(_each_timeparts_for_timerange((1999, 2), (2002, 11)))
-#     >>> sorted(_each_timeparts_for_timerange((1999,), (2002,)))
-#     >>> sorted(_each_timeparts_for_timerange((1999, 27, 17, 0, 3), (1999, 27, 17, 0, 223,)))
-#     >>> sorted(_each_timeparts_for_timerange((1999, 27, 17, 0, 3), (2002, 117, 17, 0, 3)))
-#     """
-#     for _frompart, _untilpart in itertools.islice(
-#         zip(from_timeparts, thru_timeparts, strict=False),
-#         max_timedepth,  # stop at max depth
-#     ):
-#         if _untilpart == _frompart:  # shared part
-#             yield (_untilpart,)
-#             for _restparts in _each_timeparts_for_timerange(
-#                 from_timeparts[1:], thru_timeparts[1:], max_timedepth - 1
-#             ):
-#                 yield from itertools.chain([_untilpart], _restparts)
-#         elif (_untilpart - _frompart) <= _MAX_INDEXPATTERN_COMMAS:  # not too far apart
-#             for _commadpart in range(_frompart, _untilpart):
-#                 yield from ...
-#             ...
-#         else:  # too far apart
-#             ...
+def _each_timeparts_for_timerange(
+    from_timeparts: collections.abc.Sequence[int],
+    until_timeparts: collections.abc.Sequence[int],
+    *,
+    timedepth: int,
+    max_fanout: int,
+    include_less_granular: bool,
+) -> collections.abc.Generator[tuple[tuple[int, ...], bool]]:
+    """
+    yield (timeparts, is_wildcard) tuples
+    """
+    if timedepth <= 0:
+        yield (), True  # reached timedepth; wildcard
+        return
+    _from_part, *_from_rest = from_timeparts
+    _until_part, *_until_rest = until_timeparts
+    assert _from_part <= _until_part
+
+    if include_less_granular:
+        yield (), False  # include less-granular non-wildcard index, if it exists
+    if _from_part == _until_part:
+        for _rest_parts, _is_wildcard in _each_timeparts_for_timerange(
+            _from_rest,
+            _until_rest,
+            timedepth=timedepth - 1,
+            max_fanout=max_fanout,
+            include_less_granular=include_less_granular,
+        ):
+            yield (_from_part, *_rest_parts), _is_wildcard
+    elif (_until_part - _from_part) <= max_fanout:  # not too far apart
+        for _parallel_part in range(_from_part, _until_part):
+            yield (_parallel_part,), True  # wildcard
+        if any(_until_rest):  # some of the "until" bucket is included
+            _from_zero = tuple(itertools.repeat(0, len(_until_rest)))
+            for _rest_parts, _is_wildcard in _each_timeparts_for_timerange(
+                _from_zero,
+                _until_rest,
+                timedepth=timedepth - 1,
+                max_fanout=max_fanout,
+                include_less_granular=include_less_granular,
+            ):
+                yield (_until_part, *_rest_parts), _is_wildcard
+    else:  # too far apart
+        yield (), True  # wildcard
+
+
+def _each_indexpattern_for_timerange(
+    prefix: str,
+    recordtype: str,
+    from_timeparts: collections.abc.Sequence[int],
+    until_timeparts: collections.abc.Sequence[int],
+    *,
+    timedepth: int,
+    max_fanout: int,
+    include_less_granular: bool,
+    only_datelike: bool,
+) -> collections.abc.Generator[str]:
+    for _timeparts, _is_wildcard in _each_timeparts_for_timerange(
+        from_timeparts,
+        until_timeparts,
+        timedepth=timedepth,
+        max_fanout=max_fanout,
+        include_less_granular=include_less_granular,
+    ):
+        if only_datelike and (0 in _timeparts[1:3]):
+            # intuitively, zero is a fine value for any datepart except the second and third
+            continue  # skip month zero and day zero
+        if _is_wildcard:
+            yield format_index_pattern(prefix, recordtype, _timeparts)
+        else:
+            yield format_index_name(prefix, recordtype, _timeparts)
 
 
 def format_index_pattern_for_timerange(
     prefix: str,
     recordtype: str,
-    from_timeparts: collections.abc.Iterable[int],
-    thru_timeparts: collections.abc.Iterable[int],
-    max_timedepth: int,
+    from_timeparts: collections.abc.Sequence[int],
+    until_timeparts: collections.abc.Sequence[int],
+    *,
+    timedepth: int,
+    max_fanout: int = _DEFAULT_PATTERN_FANOUT,
+    include_less_granular: bool = False,
+    only_datelike: bool = False,
 ) -> str:
     """get an index-name pattern for all indexes within a timepart range
-    >>> format_index_pattern_for_timerange('aoeu', 'mynote',
-    ...     (5020, 2, 2), (5020, 2, 20),
-    ...     max_timedepth=2)
-    'aoeu_mynote_5020_02_*'
-    >>> format_index_pattern_for_timerange('aoeu', 'mynote',
-    ...     (5020, 2, 2), (5020, 12, 20),
-    ...     max_timedepth=2)
-    'aoeu_mynote_5020_*'
+
+    >>> format_index_pattern_for_timerange('ap', 'rt',
+    ...     (5020, 2, 2), (5020, 12, 20), timedepth=2)
+    'ap_rt_5020_*'
+    >>> format_index_pattern_for_timerange('ap', 'rt',
+    ...     (5020, 2, 2), (5020, 2, 20), timedepth=2)
+    'ap_rt_5020_02_*'
+    >>> format_index_pattern_for_timerange('ap', 'rt',
+    ...     (5020, 2, 2), (5020, 2, 20), timedepth=2, include_less_granular=True)
+    'ap_rt_,ap_rt_5020_,ap_rt_5020_02_*'
+    >>> format_index_pattern_for_timerange('ap', 'rt',
+    ...     (5020, 2, 1), (5020, 3), timedepth=2)
+    'ap_rt_5020_02_*'
+    >>> format_index_pattern_for_timerange('ap', 'rt',
+    ...     (5020, 2, 2), (5020, 2, 3), timedepth=3)
+    'ap_rt_5020_02_02_*'
+    >>> format_index_pattern_for_timerange('ap', 'rt',
+    ...     (5020, 2, 2), (5020, 3, 3), timedepth=3)
+    'ap_rt_5020_02_*,ap_rt_5020_03_00_*,ap_rt_5020_03_01_*,ap_rt_5020_03_02_*'
+    >>> format_index_pattern_for_timerange('ap', 'rt',
+    ...     (5020, 2, 2), (5022, 3, 3), timedepth=3, only_datelike=True)
+    'ap_rt_5020_*,ap_rt_5021_*,ap_rt_5022_01_*,ap_rt_5022_02_*,ap_rt_5022_03_01_*,ap_rt_5022_03_02_*'
+    >>> format_index_pattern_for_timerange('ap', 'rt',
+    ...     (5020, 2, 2), (5022,), timedepth=3)
+    'ap_rt_5020_*,ap_rt_5021_*'
+    >>> format_index_pattern_for_timerange('a', 'b', (1999,), (2002,), timedepth=2)
+    'a_b_1999_*,a_b_2000_*,a_b_2001_*'
+    >>> format_index_pattern_for_timerange('a', 'b',
+    ...     (1999, 27, 17, 0, 3), (1999, 27, 17, 0, 223,), timedepth=5)
+    'a_b_1999_27_17_00_*'
+    >>> format_index_pattern_for_timerange('a', 'b',
+    ...     (1999, 27, 17, 0, 3), (2002, 117, 17, 0, 3), timedepth=5)
+    'a_b_1999_*,a_b_2000_*,a_b_2001_*,a_b_2002_*'
     """
-    return format_index_pattern(
-        prefix,
-        recordtype,
-        _timerange_part_overlap(from_timeparts, thru_timeparts, max_timedepth),
+    return ",".join(
+        _each_indexpattern_for_timerange(
+            prefix,
+            recordtype,
+            from_timeparts,
+            until_timeparts,
+            timedepth=timedepth,
+            max_fanout=max_fanout,
+            include_less_granular=include_less_granular,
+            only_datelike=only_datelike,
+        )
     )
 
 
@@ -141,21 +226,36 @@ def format_index_pattern_for_daterange(
     prefix: str,
     recordtype: str,
     from_date: datetime.date,
-    thru_date: datetime.date,
-    max_timedepth: int,
+    until_date: datetime.date,
+    timedepth: int,
+    include_less_granular: bool = False,
 ) -> str:
     """get an index-name pattern for all indexes within a date range
-    >>> format_index_pattern_for_daterange('aoeu', 'mynote',
+    >>> format_index_pattern_for_daterange('ap', 'rt',
     ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
-    ...     max_timedepth=2)
-    'aoeu_mynote_2050_05_*'
+    ...     timedepth=2)
+    'ap_rt_2050_05_*'
+    >>> format_index_pattern_for_daterange('ap', 'rt',
+    ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
+    ...     timedepth=2, include_less_granular=True)
+    'ap_rt_,ap_rt_2050_,ap_rt_2050_05_*'
+    >>> format_index_pattern_for_daterange('ap', 'rt',
+    ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
+    ...     timedepth=3)
+    'ap_rt_2050_05_05_*,ap_rt_2050_05_06_*,ap_rt_2050_05_07_*'
+    >>> format_index_pattern_for_daterange('ap', 'rt',
+    ...     datetime.date(2050, 5, 5), datetime.date(2050, 5, 8),
+    ...     timedepth=3, include_less_granular=True)
+    'ap_rt_,ap_rt_2050_,ap_rt_2050_05_,ap_rt_2050_05_05_*,ap_rt_2050_05_06_*,ap_rt_2050_05_07_*'
     """
     return format_index_pattern_for_timerange(
         prefix,
         recordtype,
-        _each_timepart_from_date(from_date),
-        _each_timepart_from_date(thru_date),
-        max_timedepth,
+        timeparts_from_date(from_date, timedepth),
+        timeparts_from_date(until_date, timedepth),
+        timedepth=timedepth,
+        include_less_granular=include_less_granular,
+        only_datelike=True,
     )
 
 
@@ -180,8 +280,8 @@ def parse_index_name(given_name: str) -> TimeseriesIndexNamePattern:
     """
     >>> parse_index_name('blah_fleh_1123_58')
     ('blah', 'fleh', (1123, 58))
-    >>> parse_index_name('aoeu_mynote_2001')
-    ('aoeu', 'mynote', (2001,))
+    >>> parse_index_name('ap_rt_2001')
+    ('ap', 'rt', (2001,))
     """
     _prefix, _recordtype, _timename = given_name.split(_DELIMITER, maxsplit=2)
     return (_prefix, _recordtype, tuple(_parse_timename(_timename)))
@@ -191,8 +291,8 @@ def parse_index_pattern(given_pattern: str) -> TimeseriesIndexNamePattern:
     """
     >>> parse_index_pattern('blah_fleh_1123_58')
     ('blah', 'fleh', (1123, 58))
-    >>> parse_index_pattern('aoeu_mynote_2001_')
-    ('aoeu', 'mynote', (2001,))
+    >>> parse_index_pattern('ap_rt_2001_')
+    ('ap', 'rt', (2001,))
     >>> parse_index_pattern('a_b_7766_5_*')
     ('a', 'b', (7766, 5))
     >>> parse_index_pattern('a_b_7766_555_*')
@@ -233,6 +333,8 @@ def _format_timename(*timeparts: int) -> str:
     '2345_06_02_17_4200'
     >>> _format_timename(6, 1, 8, 2)
     '06_01_08_02'
+    >>> _format_timename(2345, 0)
+    '2345_00'
     """
     return _DELIMITER.join(map(_format_timepart, timeparts))
 
