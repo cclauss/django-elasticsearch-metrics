@@ -13,6 +13,7 @@ __all__ = (
     "parse_index_pattern",
     "format_namepart",
     "format_template_name",
+    "timeparts_from_date",
 )
 
 import collections
@@ -103,10 +104,8 @@ def _each_timeparts_for_timerange(
     if timedepth <= 0:
         yield (), True  # reached timedepth; wildcard
         return
-    _from_part, *_from_rest = from_timeparts
-    _until_part, *_until_rest = until_timeparts
-    assert _from_part <= _until_part
-
+    _from_part, *_from_rest = from_timeparts or [0]
+    _until_part, *_until_rest = until_timeparts or [0]
     if include_less_granular:
         yield (), False  # include less-granular non-wildcard index, if it exists
     if _from_part == _until_part:
@@ -118,7 +117,7 @@ def _each_timeparts_for_timerange(
             include_less_granular=include_less_granular,
         ):
             yield (_from_part, *_rest_parts), _is_wildcard
-    elif (_until_part - _from_part) <= max_fanout:  # not too far apart
+    elif 0 < (_until_part - _from_part) <= max_fanout:  # not too far apart
         for _parallel_part in range(_from_part, _until_part):
             yield (_parallel_part,), True  # wildcard
         if any(_until_rest):  # some of the "until" bucket is included
@@ -250,22 +249,13 @@ def format_index_pattern_for_range(
     >>> format_index_pattern_for_range('ap', 'rt',
     ...     (200, 5), datetime.date(200, 5, 8),
     ...     timedepth=3)
+    'ap_rt_200_05_*'
     """
-    _from_timeparts = (
-        timeparts_from_date(from_when, timedepth)
-        if isinstance(from_when, datetime.date)
-        else from_when
-    )
-    _until_timeparts = (
-        timeparts_from_date(until_when, timedepth)
-        if isinstance(until_when, datetime.date)
-        else until_when
-    )
     return format_index_pattern_for_timerange(
-        prefix,
-        recordtype,
-        _from_timeparts,
-        _until_timeparts,
+        prefix=prefix,
+        recordtype=recordtype,
+        from_timeparts=_whenparts(from_when, timedepth),
+        until_timeparts=_whenparts(until_when, timedepth),
         timedepth=timedepth,
         include_less_granular=include_less_granular,
         only_datelike=True,
@@ -365,7 +355,7 @@ def _parse_timename(given_timename: str) -> Iterator[int]:
         yield int(_part)
 
 
-def timename_from_datestr(given_date: str, part_count: int) -> str:
+def timename_from_datestr(given_date: str, timedepth: int) -> str:
     """
     >>> timename_from_datestr('2345-06-07', 1)
     '2345'
@@ -384,28 +374,32 @@ def timename_from_datestr(given_date: str, part_count: int) -> str:
     """
     return timename_from_date(
         datetime.datetime.fromisoformat(given_date),
-        part_count=part_count,
+        timedepth=timedepth,
     )
 
 
-def timename_from_date(given_date: datetime.date, part_count: int) -> str:
+def timename_from_date(given_date: datetime.date, timedepth: int) -> str:
     """
     >>> timename_from_date(datetime.date(3456, 7, 8), 2)
     '3456_07'
     """
-    _timeparts = itertools.islice(_each_timepart_from_date(given_date), part_count)
+    _timeparts = itertools.islice(_each_timepart_from_date(given_date), timedepth)
     return _format_timename(*_timeparts)
 
 
-def timeparts_from_date(given_date: datetime.date, part_count: int) -> tuple[int, ...]:
+def timeparts_from_date(given_date: datetime.date, timedepth: int) -> tuple[int, ...]:
     """
     >>> timeparts_from_date(datetime.date(3456, 7, 8), 2)
     (3456, 7)
     >>> timeparts_from_date(datetime.date(3456, 7, 8), 4)
     (3456, 7, 8, 0)
     """
-    _parts = itertools.chain(_each_timepart_from_date(given_date), itertools.repeat(0))
-    return tuple(itertools.islice(_parts, part_count))
+    return tuple(
+        itertools.islice(
+            _zeropadded_timeparts(_each_timepart_from_date(given_date)),
+            timedepth,
+        )
+    )
 
 
 def _each_timepart_from_date(given_date: datetime.date) -> Iterator[int]:
@@ -418,5 +412,66 @@ def _each_timepart_from_date(given_date: datetime.date) -> Iterator[int]:
         yield given_date.second
 
 
+def _zeropadded_timeparts(
+    timeparts: collections.abc.Iterable[int],
+) -> collections.abc.Iterator[int]:
+    yield from timeparts
+    yield from itertools.repeat(0)
+
+
 def _format_timepart(timepart: int) -> str:
     return f"{timepart:0{_TIMEPART_MIN_LEN}}"
+
+
+def _whenparts(
+    when: tuple[int, ...] | datetime.date,
+    timedepth: int,
+) -> tuple[int, ...]:
+    return (
+        timeparts_from_date(when, timedepth)
+        if isinstance(when, datetime.date)
+        else tuple(itertools.islice(_zeropadded_timeparts(when), timedepth))
+    )
+
+
+def full_semverlike_timeparts(when: tuple[int, ...] | datetime.date) -> str:
+    """
+    >>> full_semverlike_timeparts((3000, 2))
+    '3000.2'
+    >>> full_semverlike_timeparts(datetime.date(3000, 7, 12))
+    '3000.7.12'
+    >>> full_semverlike_timeparts(datetime.datetime(3000, 9, 1))
+    '3000.9.1.0.0.0'
+    """
+    _parts = (
+        timeparts_from_date(
+            when, timedepth=(6 if isinstance(when, datetime.datetime) else 3)
+        )
+        if isinstance(when, datetime.date)
+        else when
+    )
+    return ".".join(map(str, _parts))
+
+
+def semverlike_timeparts(when: tuple[int, ...] | datetime.date, timedepth: int) -> str:
+    """
+    >>> semverlike_timeparts((3000, 2, 7, 9), timedepth=2)
+    '3000.2'
+    >>> semverlike_timeparts((3000, 2), timedepth=1)
+    '3000'
+    >>> semverlike_timeparts((3000, 2, 7, 9), timedepth=5)
+    '3000.2.7.9.0'
+
+    >>> semverlike_timeparts(datetime.date(3000, 7, 12), timedepth=3)
+    '3000.7.12'
+    >>> semverlike_timeparts(datetime.date(3000, 7, 12), timedepth=2)
+    '3000.7'
+    >>> semverlike_timeparts(datetime.date(3000, 7, 12), timedepth=1)
+    '3000'
+
+    >>> semverlike_timeparts(datetime.datetime(3000, 9, 1, 5, 2), timedepth=6)
+    '3000.9.1.5.2.0'
+    >>> semverlike_timeparts(datetime.datetime(3000, 9, 1, 5, 2), timedepth=3)
+    '3000.9.1'
+    """
+    return full_semverlike_timeparts(_whenparts(when, timedepth))

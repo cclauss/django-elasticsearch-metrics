@@ -27,12 +27,16 @@ from django.conf import settings
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8 import Elasticsearch as Elastic8Client
 from elasticsearch8 import dsl as esdsl
-from elasticsearch8._sync.document import IndexMeta
+from elasticsearch8.dsl._sync.document import IndexMeta
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import djelme_registry
-from elasticsearch_metrics.protocols import ProtoDjelmeBackend, ProtoCountedUsage
+from elasticsearch_metrics.protocols import (
+    ProtoDjelmeBackend,
+    ProtoCountedUsage,
+    ProtoDjelmeRecord,
+)
 from elasticsearch_metrics.util import timeseries_naming
 from elasticsearch_metrics.util.unique_together import get_unique_id
 from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
@@ -144,14 +148,16 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
         abstract = True
 
     @classmethod
-    def record(cls, *, using=None, **kwargs):
+    def record(
+        cls, *, using: str | None = None, **kwargs: typing.Any
+    ) -> "typing.Self":  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
         """Persist a record in Elasticsearch."""
         _instance = cls(**kwargs)
         _instance.save(using=using)
         return _instance
 
     @classmethod
-    def check_djelme_setup(cls, using: str | Elastic8Client | None = None) -> bool:
+    def check_djelme_setup(cls, using: str | None = None) -> bool:
         return bool(cls._index.get(using=using))
 
     @classmethod
@@ -225,7 +231,11 @@ class TimeseriesRecord(DjelmeRecordtype):
     timestamp: datetime.datetime = esdsl.mapped_field(
         default_factory=lambda: django.utils.timezone.now()
     )
-    timeparts: str = esdsl.mapped_field(esdsl.Version())
+    # the 'version' field type allows range queries on semver-like strings
+    # that fit perfectly with "timeparts" representation of a UTC datetime
+    # as a sequence of integers -- helps to avoid time zones and date math
+    # (e.g. '2000' < '2000.5.10' < '2000.5.20.20.20' < '2000.11' < '2001')
+    timestamp_parts: str = esdsl.mapped_field(esdsl.Version(), default="")
 
     class Meta:
         abstract = True
@@ -253,11 +263,16 @@ class TimeseriesRecord(DjelmeRecordtype):
         from_when: tuple[int, ...] | datetime.date,
         until_when: tuple[int, ...] | datetime.date,
         **kwargs: typing.Any,
-    ) -> esdsl.Search:
+    ) -> typing.Any:
         _index_pattern = cls.format_timeseries_index_pattern_for_range(
             from_when, until_when
         )
-        _timestamp_q = esdsl.query.Range("timestamp", gte=..., lt=...)
+        _timedepth = cls.get_timedepth()
+        _timestamp_q = esdsl.query.Range(
+            "timestamp_parts",
+            gte=timeseries_naming.semverlike_timeparts(from_when, timedepth=_timedepth),
+            lt=timeseries_naming.semverlike_timeparts(until_when, timedepth=_timedepth),
+        )
         return cls.search(index=_index_pattern).filter(_timestamp_q)
 
     @classmethod
@@ -425,6 +440,13 @@ class TimeseriesRecord(DjelmeRecordtype):
     ###
     # instance methods
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.timestamp_parts = self._build_timestamp_parts()
+
+    def _build_timestamp_parts(self) -> str:
+        return timeseries_naming.full_semverlike_timeparts(self.timestamp)
+
     def djelme_index_name(self) -> str:
         assert self.timestamp is not None
         return self.format_timeseries_index_name(self.timestamp)
@@ -567,6 +589,7 @@ if __debug__ and typing.TYPE_CHECKING:
     # for static type-checking; verify intent
     _: type[ProtoCountedUsage] = CountedUsageRecord
     __: type[ProtoDjelmeBackend] = DjelmeElastic8Backend
+    ___: type[ProtoDjelmeRecord] = DjelmeRecordtype
 
 ###
 # names expected by ProtoDjelmeImp

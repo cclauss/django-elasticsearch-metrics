@@ -105,5 +105,5 @@ pc up testbox
 
 example devloop -- build with current code, lint and run tests with debugger on error, stop on failure
 ```
-pc run --build --rm --no-deps testbox poetry run python -m elasticsearch_metrics.tests --devloop
+pc run --build --rm --no-deps testbox poetry run python -m elasticsearch_metrics.tests --failfast --pdb
 ```
