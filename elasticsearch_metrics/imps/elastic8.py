@@ -161,6 +161,24 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
         return bool(cls._index.get(using=using))
 
     @classmethod
+    def refresh_all(cls, using: str | None = None) -> None:
+        cls._get_connection(using).indices.refresh(
+            index=cls.format_timeseries_index_pattern()
+        )
+
+    @classmethod
+    def each_index(
+        cls, using: str | None = None
+    ) -> collections.abc.Iterator[tuple[str, dict[str, typing.Any]]]:
+        _resp = cls._get_connection(using).indices.get(
+            index=cls.format_timeseries_index_pattern(),
+        )
+        for _index_name, _index_info in _resp.items():
+            assert isinstance(_index_name, str)
+            assert isinstance(_index_info, dict)
+            yield _index_name, _index_info
+
+    @classmethod
     def _djelme_teardown(cls, es_client):
         cls._index.delete(using=es_client)
 
@@ -244,18 +262,15 @@ class TimeseriesRecord(DjelmeRecordtype):
     # class methods
 
     @classmethod
-    def init(cls, index=None, using=None):
+    def init(cls, index=None, using=None) -> None:
         """Create the index and populate the mappings in elasticsearch.
 
         overrides elasticsearch.Document.init
         """
         assert not cls.is_abstract
         # to init timeseries indexes, create only the template
+        # (don't call super().init(), which would create a "now" index)
         cls.sync_index_template(using=using)
-        return super().init(
-            index=(index or cls.format_timeseries_index_name()),
-            using=cls._get_using(using),
-        )
 
     @classmethod
     def search(cls, *, index=None, **kwargs):
@@ -276,9 +291,10 @@ class TimeseriesRecord(DjelmeRecordtype):
         )
         _timedepth = cls.get_timedepth()
         _timestamp_q = esdsl.query.Range(
-            "timestamp_parts",
-            gte=timeseries_naming.semverlike_timeparts(from_when, timedepth=_timedepth),
-            lt=timeseries_naming.semverlike_timeparts(until_when, timedepth=_timedepth),
+            timestamp_parts={
+                "gte": timeseries_naming.semverlike_timeparts(from_when, _timedepth),
+                "lt": timeseries_naming.semverlike_timeparts(until_when, _timedepth),
+            }
         )
         return cls.search(index=_index_pattern).filter(_timestamp_q)
 

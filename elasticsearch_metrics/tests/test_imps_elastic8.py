@@ -273,8 +273,8 @@ class TestSignals(MockSaveTestCase):
         assert post_save_kwargs["sender"] is ThingHappened
 
 
-class TestCreateAndSearch(RealElasticTestCase, autosetup_djelme_backends=True):
-    def test_create_document(self):
+class TestRealCreate(RealElasticTestCase, autosetup_djelme_backends=True):
+    def test_save(self):
         _thing_id = "12345"
         _happen_code = "zyxwv"
         _doc = ThingHappened(thing_id=_thing_id, happen_code=_happen_code)
@@ -285,6 +285,7 @@ class TestCreateAndSearch(RealElasticTestCase, autosetup_djelme_backends=True):
         )
         assert _fetched_doc
         assert _fetched_doc.timestamp == _doc.timestamp
+        assert _fetched_doc.timestamp_parts == _doc.timestamp_parts
         assert _fetched_doc.thing_id == _doc.thing_id == _thing_id
         assert _fetched_doc.happen_code == _doc.happen_code == _happen_code
 
@@ -296,18 +297,48 @@ class TestCreateAndSearch(RealElasticTestCase, autosetup_djelme_backends=True):
         assert properties["thing_id"] == {"type": "keyword"}
         assert properties["happen_code"] == {"type": "keyword"}
 
-    def test_search(self): ...  # TODO
+    def test_record(self):
+        _thing_id = "54321"
+        _happen_code = "abcde"
+        _doc = ThingHappened.record(thing_id=_thing_id, happen_code=_happen_code)
+        assert _doc.timestamp is not None
+        _fetched_doc = ThingHappened.get(
+            id=_doc.meta.id, index=_doc.djelme_index_name()
+        )
+        assert _fetched_doc
+        assert _fetched_doc.timestamp == _doc.timestamp
+        assert _fetched_doc.timestamp_parts == _doc.timestamp_parts
+        assert _fetched_doc.thing_id == _doc.thing_id == _thing_id
+        assert _fetched_doc.happen_code == _doc.happen_code == _happen_code
 
-
-class TestInit(RealElasticTestCase, autosetup_djelme_backends=False):
-    def test_init(self):
-        ThingHappened.init()
-        name = ThingHappened.format_timeseries_index_name()
+        # index mappings should match the index template
+        name = _doc.djelme_index_name()
         mapping = _es8_client().indices.get_mapping(index=name)
         properties = mapping[name]["mappings"]["properties"]
         assert properties["timestamp"] == {"type": "date"}
         assert properties["thing_id"] == {"type": "keyword"}
         assert properties["happen_code"] == {"type": "keyword"}
+
+
+class TestInit(RealElasticTestCase, autosetup_djelme_backends=False):
+    def test_init(self):
+        ThingHappened.init()
+        _client = _es8_client()
+        _template_name = ThingHappened.get_timeseries_template_name()
+        _index_pattern = ThingHappened.format_timeseries_index_pattern()
+        _template_resp = _client.indices.get_index_template(name=_template_name)
+        (_t_info,) = _template_resp["index_templates"]
+        self.assertEqual(_t_info["name"], _template_name)
+        self.assertEqual(
+            _t_info["index_template"]["index_patterns"],
+            [_index_pattern],
+        )
+        _properties = _t_info["index_template"]["template"]["mappings"]["properties"]
+        self.assertEqual(_properties["timestamp"], {"type": "date"})
+        self.assertEqual(_properties["thing_id"], {"type": "keyword"})
+        self.assertEqual(_properties["happen_code"], {"type": "keyword"})
+        # no indexes; only the template
+        self.assertFalse(list(ThingHappened.each_index()))
 
     def test_check_djelme_setup(self):
         with self.assertRaises(IndexTemplateNotFoundError):
@@ -328,3 +359,58 @@ class TestInit(RealElasticTestCase, autosetup_djelme_backends=False):
 
         ThingHappened.sync_index_template()
         assert ThingHappened.check_djelme_setup() is True
+
+
+class TestDailyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
+    def setUp(self):
+        super().setUp()
+        Dummy8Event.record(timestamp=dt.datetime(1234, 5, 6), intensity=1)
+        Dummy8Event.record(timestamp=dt.datetime(1234, 5, 6, 7), intensity=2)
+        Dummy8Event.record(timestamp=dt.datetime(1234, 5, 7), intensity=3)
+        Dummy8Event.record(timestamp=dt.datetime(1234, 6, 1), intensity=7)
+        Dummy8Event.record(timestamp=dt.datetime(1235, 5, 6), intensity=111)
+        Dummy8Event.record(timestamp=dt.datetime(2345, 6, 9), intensity=11)
+        Dummy8Event.record(timestamp=dt.datetime(2345, 7, 9), intensity=13)
+        Dummy8Event.refresh_all()
+
+    def test_indexes(self):
+        _index_names = {_name for _name, _ in Dummy8Event.each_index()}
+        self.assertEqual(
+            _index_names,
+            {
+                "dummy8app_dummy8event_1234_05_06_",
+                "dummy8app_dummy8event_1234_05_07_",
+                "dummy8app_dummy8event_1234_06_01_",
+                "dummy8app_dummy8event_1235_05_06_",
+                "dummy8app_dummy8event_2345_06_09_",
+                "dummy8app_dummy8event_2345_07_09_",
+            },
+        )
+
+    def test_search(self):
+        def _assert_intens(hits, expected_intensities):
+            _actual = {_hit.intensity for _hit in hits}
+            self.assertEqual(_actual, expected_intensities)
+
+        _assert_intens(
+            Dummy8Event.search(),
+            {1, 2, 3, 7, 11, 13, 111},
+        )
+        _assert_intens(
+            Dummy8Event.search_timeseries_range((1234,), (1235,)),
+            {1, 2, 3, 7},
+        )
+        _assert_intens(
+            Dummy8Event.search_timeseries_range((1233,), (1234,)),
+            set(),
+        )
+        _assert_intens(
+            Dummy8Event.search_timeseries_range(
+                dt.date(1234, 5, 6), dt.date(1234, 5, 7)
+            ),
+            {1, 2},
+        )
+        _assert_intens(
+            Dummy8Event.search_timeseries_range((1234, 6), dt.date(2345, 7, 1)),
+            {7, 111, 11},
+        )

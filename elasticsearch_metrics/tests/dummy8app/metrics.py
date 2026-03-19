@@ -12,6 +12,7 @@ class Dummy8Event(djelme.EventRecord):
 
     class Index:
         using = "my_elastic8_events"
+        settings = {"refresh_interval": "0"}  # immediate refresh
 
 
 class Dummy8EventWithExplicitNamePrefix(djelme.EventRecord):
