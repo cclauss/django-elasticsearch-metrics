@@ -12,15 +12,15 @@ class Dummy8Event(djelme.EventRecord):
 
     class Index:
         using = "my_elastic8_events"
-        settings = {"refresh_interval": "0"}  # immediate refresh
 
 
-class Dummy8EventWithExplicitNamePrefix(djelme.EventRecord):
+class Monthly8Event(djelme.EventRecord):
     intenzity: int
 
     class Meta:
         timeseries_name_prefix = "dummy8evenz"
         timeseries_recordtype_name = "eventlog"
+        timedepth = 2
 
     class Index:
         using = "my_elastic8_events"
@@ -28,7 +28,7 @@ class Dummy8EventWithExplicitNamePrefix(djelme.EventRecord):
 
 class ThingHappened(djelme.EventRecord):
     thing_id: str = ""
-    happen_code: str = ""
+    happen_code: str | None = None
     dot_path: str | None = mapped_field(Text(analyzer=dot_path_analyzer), default=None)
     commentary: str | None = mapped_field(Text(), default=None)
 
@@ -38,17 +38,17 @@ class ThingHappened(djelme.EventRecord):
 
     class Meta:
         timeseries_recordtype_name = "happen"
-        timedepth = 1
+        timedepth = 1  # yearly timeseries indexes
 
 
 # TODO: tests using ThingHappeningsReport
 class ThingHappeningsReport(djelme.CyclicRecord):
-    item_id: str
-    item_type: str
+    thing_id: str
+    happen_count: int
 
     class Index:
-        settings = {"refresh_interval": "-1"}
         using = "my_elastic8_reports"
 
     class Meta:
         timeseries_name_prefix = "blarg"
+        timedepth = 2  # monthly timeseries indexes

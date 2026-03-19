@@ -255,10 +255,6 @@ class _DjelmeRegistry:
             )
         return self.all_recordtypes[app_label]
 
-    def _is_type_downstream_of_module(self, given_type: type, module_name: str) -> bool:
-        _upstream_modules = (_cls.__module__ for _cls in given_type.__mro__)
-        return module_name in _upstream_modules
-
 
 def _import_imp_module(imp_module_name: str) -> ProtoDjelmeImp:
     try:

@@ -161,13 +161,13 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
         return bool(cls._index.get(using=using))
 
     @classmethod
-    def refresh_all(cls, using: str | None = None) -> None:
+    def refresh_timeseries_indexes(cls, using: str | None = None) -> None:
         cls._get_connection(using).indices.refresh(
             index=cls.format_timeseries_index_pattern()
         )
 
     @classmethod
-    def each_index(
+    def each_timeseries_index(
         cls, using: str | None = None
     ) -> collections.abc.Iterator[tuple[str, dict[str, typing.Any]]]:
         _resp = cls._get_connection(using).indices.get(
@@ -289,11 +289,10 @@ class TimeseriesRecord(DjelmeRecordtype):
         _index_pattern = cls.format_timeseries_index_pattern_for_range(
             from_when, until_when
         )
-        _timedepth = cls.get_timedepth()
         _timestamp_q = esdsl.query.Range(
             timestamp_parts={
-                "gte": timeseries_naming.semverlike_timeparts(from_when, _timedepth),
-                "lt": timeseries_naming.semverlike_timeparts(until_when, _timedepth),
+                "gte": timeseries_naming.full_semverlike_timeparts(from_when),
+                "lt": timeseries_naming.full_semverlike_timeparts(until_when),
             }
         )
         return cls.search(index=_index_pattern).filter(_timestamp_q)
