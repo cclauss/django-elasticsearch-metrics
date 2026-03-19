@@ -57,8 +57,8 @@ from elasticsearch_metrics.imps.elastic8 import EventRecord
 class UsageRecord(EventRecord):
     item_id: int
 
-    class Meta:
-        djelme_backend = "my-es8-backend"  # optional if only one backend
+    class Index:
+        using = "my-es8-backend"  # optional if only one backend
 ```
 
 Either enable autosetup...
@@ -87,8 +87,13 @@ UsageRecord.record(item_id='my.item.id')
 Go forth and search!
 
 ```python
-# search across all timeseries indexes -- get an `elasticsearch8.dsl.Search` object
+# get an instance of `elasticsearch8.dsl.Search` that queries all timeseries indexes of this type:
 UsageRecord.search()
+
+# or get a `Search` for a given time range (from_when <= timestamp < until_when)
+UsageRecord.search_timeseries_range((1999,), (2001,))  # in or after 1999; before 2001
+UsageRecord.search_timeseries_range((2050, 12), (2051,))  # in 2050-12
+UsageRecord.search_timeseries_range(datetime.date(2030, 1, 1), datetime.date(2030, 2, 1))  # in 2030-01
 ```
 
 ## Timeseries indexes
