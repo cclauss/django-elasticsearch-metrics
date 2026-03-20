@@ -423,16 +423,19 @@ class TestDailyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         Dummy8Event.refresh_timeseries_indexes()
 
     def test_indexes(self):
-        _index_names = {_name for _name, _ in Dummy8Event.each_timeseries_index()}
+        _index_names = {
+            _strip_test_prefix(_name)
+            for _name, _ in Dummy8Event.each_timeseries_index()
+        }
         self.assertEqual(
             _index_names,
             {
-                "dummy8app_dummy8event_1234_05_06_",
-                "dummy8app_dummy8event_1234_05_07_",
-                "dummy8app_dummy8event_1234_06_01_",
-                "dummy8app_dummy8event_1235_05_06_",
-                "dummy8app_dummy8event_2345_06_09_",
-                "dummy8app_dummy8event_2345_07_09_",
+                "dummy8event_1234_05_06_",
+                "dummy8event_1234_05_07_",
+                "dummy8event_1234_06_01_",
+                "dummy8event_1235_05_06_",
+                "dummy8event_2345_06_09_",
+                "dummy8event_2345_07_09_",
             },
         )
 
@@ -482,15 +485,18 @@ class TestMonthlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         Monthly8Event.refresh_timeseries_indexes()
 
     def test_indexes(self):
-        _index_names = {_name for _name, _ in Monthly8Event.each_timeseries_index()}
+        _index_names = {
+            _strip_test_prefix(_name)
+            for _name, _ in Monthly8Event.each_timeseries_index()
+        }
         self.assertEqual(
             _index_names,
             {
-                "dummy8evenz_eventlog_1234_05_",
-                "dummy8evenz_eventlog_1234_06_",
-                "dummy8evenz_eventlog_1235_05_",
-                "dummy8evenz_eventlog_2345_06_",
-                "dummy8evenz_eventlog_2345_07_",
+                "eventlog_1234_05_",
+                "eventlog_1234_06_",
+                "eventlog_1235_05_",
+                "eventlog_2345_06_",
+                "eventlog_2345_07_",
             },
         )
 
@@ -540,13 +546,16 @@ class TestYearlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         ThingHappened.refresh_timeseries_indexes()
 
     def test_indexes(self):
-        _index_names = {_name for _name, _ in ThingHappened.each_timeseries_index()}
+        _index_names = {
+            _strip_test_prefix(_name)
+            for _name, _ in ThingHappened.each_timeseries_index()
+        }
         self.assertEqual(
             _index_names,
             {
-                "dummy8app_happen_1234_",
-                "dummy8app_happen_1235_",
-                "dummy8app_happen_2345_",
+                "happen_1234_",
+                "happen_1235_",
+                "happen_2345_",
             },
         )
 
@@ -581,3 +590,9 @@ class TestYearlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
             ThingHappened.search_timeseries_range((1234, 5, 6, 2), (1234, 5, 7)),
             {"b"},
         )
+
+
+def _strip_test_prefix(index_name: str) -> str:
+    # strip uuid test prefix
+    (_, _, _without_prefix) = index_name.partition("_")
+    return _without_prefix

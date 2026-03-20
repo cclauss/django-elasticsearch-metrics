@@ -158,28 +158,12 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
 
     @classmethod
     def check_djelme_setup(cls, using: str | None = None) -> bool:
+        # this base class has only a single index -- does it exist?
         return bool(cls._index.get(using=using))
 
     @classmethod
-    def refresh_timeseries_indexes(cls, using: str | None = None) -> None:
-        cls._get_connection(using).indices.refresh(
-            index=cls.format_timeseries_index_pattern()
-        )
-
-    @classmethod
-    def each_timeseries_index(
-        cls, using: str | None = None
-    ) -> collections.abc.Iterator[tuple[str, dict[str, typing.Any]]]:
-        _resp = cls._get_connection(using).indices.get(
-            index=cls.format_timeseries_index_pattern(),
-        )
-        for _index_name, _index_info in _resp.items():
-            assert isinstance(_index_name, str)
-            assert isinstance(_index_info, dict)
-            yield _index_name, _index_info
-
-    @classmethod
     def _djelme_teardown(cls, es_client):
+        # this base class has only a single index -- delete it
         cls._index.delete(using=es_client)
 
     @classmethod
@@ -263,13 +247,12 @@ class TimeseriesRecord(DjelmeRecordtype):
 
     @classmethod
     def init(cls, index=None, using=None) -> None:
-        """Create the index and populate the mappings in elasticsearch.
+        """Create an index template with mappings for timeseries indexes
 
         overrides elasticsearch.Document.init
+        (but doesn't call super().init(), which would create a "now" index)
         """
         assert not cls.is_abstract
-        # to init timeseries indexes, create only the template
-        # (don't call super().init(), which would create a "now" index)
         cls.sync_index_template(using=using)
 
     @classmethod
@@ -296,6 +279,24 @@ class TimeseriesRecord(DjelmeRecordtype):
             }
         )
         return cls.search(index=_index_pattern).filter(_timestamp_q)
+
+    @classmethod
+    def refresh_timeseries_indexes(cls, using: str | None = None) -> None:
+        cls._get_connection(using).indices.refresh(
+            index=cls.format_timeseries_index_pattern()
+        )
+
+    @classmethod
+    def each_timeseries_index(
+        cls, using: str | None = None
+    ) -> collections.abc.Iterator[tuple[str, dict[str, typing.Any]]]:
+        _resp = cls._get_connection(using).indices.get(
+            index=cls.format_timeseries_index_pattern(),
+        )
+        for _index_name, _index_info in _resp.items():
+            assert isinstance(_index_name, str)
+            assert isinstance(_index_info, dict)
+            yield _index_name, _index_info
 
     @classmethod
     def _djelme_teardown(cls, es8_client: Elastic8Client) -> None:
