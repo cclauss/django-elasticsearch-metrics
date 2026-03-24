@@ -252,13 +252,20 @@ class BaseMetric(metaclass=MetricMeta):
         )
 
     @classmethod
+    def get_timeseries_name_prefix(cls) -> str:
+        return ""
+
+    @classmethod
     def get_index_name(cls, date: datetime.date | None = None) -> str:
         date = date or timezone.now().date()
         dateformat = getattr(
             settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
         )
         date_formatted = date.strftime(dateformat)
-        return "{}_{}".format(cls._template_name, date_formatted)
+        _name_parts = (cls._template_name, date_formatted)
+        if _prefix := cls.get_timeseries_name_prefix():
+            _name_parts = (_prefix, *_name_parts)
+        return "_".join(_name_parts)
 
 
 class Metric(Document, BaseMetric):

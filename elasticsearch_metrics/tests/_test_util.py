@@ -2,6 +2,7 @@ from io import StringIO
 from unittest import mock
 import types
 import typing
+import uuid
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
@@ -52,18 +53,29 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     def setUp(self):
         super().setUp()
+        _name_prefix = uuid.uuid4().hex
+        self.enterContext(
+            mock.patch(
+                "elasticsearch_metrics.imps.elastic8.TimeseriesRecord.get_timeseries_name_prefix",
+                return_value=_name_prefix,
+            )
+        )
+        self.enterContext(
+            mock.patch(
+                "elasticsearch_metrics.imps.elastic6.BaseMetric.get_timeseries_name_prefix",
+                return_value=_name_prefix,
+            ),
+        )
         if self.__autosetup_backends:
             self.setup_backends()
 
     def tearDown(self):
-        super().tearDown()
         if self.__autoteardown_backends:
             self.teardown_backends()
+        super().tearDown()
 
     def setup_backends(self):
-        # TODO: prefix index names, avoid collisions across test runs
-        # get settings from elasticsearch_metrics.tests.settings.DJELME_BACKENDS
-        # self.teardown_backends()  # in case any already exist
+        # backends based on settings in django.conf.settings.DJELME_BACKENDS
         for _backend_name, _recordtypes in djelme_registry.each_recordtype_by_backend():
             djelme_registry.get_backend(_backend_name).djelme_setup(_recordtypes)
 
@@ -78,5 +90,5 @@ class MockSaveTestCase(SimpleDjelmeTestCase):
             mock.patch("elasticsearch_metrics.imps.elastic6.Document.save"),
         )
         self.mocked_es8_save = self.enterContext(
-            mock.patch("elasticsearch_metrics.imps.elastic8.Document.save"),
+            mock.patch("elasticsearch_metrics.imps.elastic8.esdsl.Document.save"),
         )

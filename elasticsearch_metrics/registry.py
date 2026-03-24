@@ -1,9 +1,12 @@
 import collections
 import dataclasses
+import functools
 import importlib
 import weakref
 
 from django.apps import apps
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 from elasticsearch_metrics.protocols import (
     ProtoDjelmeBackend,
@@ -13,6 +16,8 @@ from elasticsearch_metrics.protocols import (
 from elasticsearch_metrics.util.django import find_app_label_for_type
 
 __all__ = ("djelme_registry",)
+
+_BACKENDS_SETTING = "DJELME_BACKENDS"
 
 
 @dataclasses.dataclass
@@ -48,19 +53,14 @@ class _DjelmeRegistry:
 
     # nested mapping from backend_name => imp_module_name => imp backend config dictionary
     # (note, only one imp module allowed per backend (for now))
-    all_backends: dict[str, dict[str, dict[str, str]]] = dataclasses.field(
-        default_factory=dict,
-    )
+    @functools.cached_property
+    def all_backends(self) -> dict[str, dict[str, dict[str, str]]]:
+        _backends_setting = getattr(settings, _BACKENDS_SETTING, {})
+        _validate_backends_setting(_backends_setting)
+        return _backends_setting
 
     ###
     # `register` methods: for adding items to the registry
-
-    def register_backend(
-        self, backend_name: str, imp_module_name: str, imp_kwargs: dict[str, str]
-    ) -> None:
-        if backend_name in self.all_backends:
-            raise RuntimeError(f"duplicate imps named {backend_name!r}")
-        self.all_backends[backend_name] = {imp_module_name: imp_kwargs}
 
     def register_recordtype(
         self,
@@ -186,12 +186,17 @@ class _DjelmeRegistry:
             for _recordtype in self._get_recordtypes_for_app(_app_label).values():
                 yield _recordtype
 
+    def each_backend_settings(self) -> collections.abc.Iterator[tuple[str, str, dict]]:
+        for _backend_name, _imp_config in self.all_backends.items():
+            if _imp_config:
+                _imp_module_name, _imp_kwargs = next(iter(_imp_config.items()))
+                yield (_backend_name, _imp_module_name, _imp_kwargs)
+
     def each_backend_name(
         self,
         *,
         imp_module_name: str = "",
     ) -> collections.abc.Iterator[str]:
-        apps.check_apps_ready()  # ensure django setup done
         for _backend_name, _imp_config in self.all_backends.items():
             if (not imp_module_name) or (imp_module_name in _imp_config):
                 yield _backend_name
@@ -250,10 +255,6 @@ class _DjelmeRegistry:
             )
         return self.all_recordtypes[app_label]
 
-    def _is_type_downstream_of_module(self, given_type: type, module_name: str) -> bool:
-        _upstream_modules = (_cls.__module__ for _cls in given_type.__mro__)
-        return module_name in _upstream_modules
-
 
 def _import_imp_module(imp_module_name: str) -> ProtoDjelmeImp:
     try:
@@ -262,6 +263,26 @@ def _import_imp_module(imp_module_name: str) -> ProtoDjelmeImp:
         raise ValueError(f"could not import {imp_module_name!r}") from _error
     assert isinstance(_imp_module, ProtoDjelmeImp)
     return _imp_module
+
+
+def _validate_backends_setting(backends_setting):
+    for _backend_name, _backend_imps in getattr(
+        settings, _BACKENDS_SETTING, {}
+    ).items():
+        if len(_backend_imps) > 1:
+            raise ImproperlyConfigured(
+                _BACKENDS_SETTING, "only one imp per backend, at the moment"
+            )
+        for _imp_module_name, _imp_kwargs in _backend_imps.items():
+            if not (
+                isinstance(_imp_module_name, str)
+                and isinstance(_imp_kwargs, dict)
+                and all(isinstance(_k, str) for _k in _imp_kwargs.keys())
+            ):
+                raise ImproperlyConfigured(
+                    _BACKENDS_SETTING,
+                    'expected {"mybackend": {"imp.path": {"imp_config": "..."}}}',
+                )
 
 
 ###

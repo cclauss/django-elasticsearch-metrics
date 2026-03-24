@@ -26,20 +26,17 @@ import django
 from django.conf import settings
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8 import Elasticsearch as Elastic8Client
-from elasticsearch8.dsl import (
-    Document,
-    connections,
-    ComposableIndexTemplate,
-    mapped_field,
-    Keyword,
-)
+from elasticsearch8 import dsl as esdsl
 from elasticsearch8.dsl._sync.document import IndexMeta
-from elasticsearch8.dsl.document_base import DocumentOptions
 
 from elasticsearch_metrics import signals
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.registry import djelme_registry
-from elasticsearch_metrics.protocols import ProtoDjelmeBackend, ProtoCountedUsage
+from elasticsearch_metrics.protocols import (
+    ProtoDjelmeBackend,
+    ProtoCountedUsage,
+    ProtoDjelmeRecord,
+)
 from elasticsearch_metrics.util import timeseries_naming
 from elasticsearch_metrics.util.unique_together import get_unique_id
 from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
@@ -55,7 +52,7 @@ _DEFAULT_TIMEDEPTH = 3  # xxxx_xx_xx_ (daily)
 # invasive hacky changes to elasticsearch8.dsl
 
 # change default mapping for `str` annotations from Text to Keyword:
-DocumentOptions.type_annotation_map[str] = (Keyword, {})
+esdsl.document_base.DocumentOptions.type_annotation_map[str] = (esdsl.Keyword, {})
 
 
 # changes to document metaclass behavior
@@ -117,7 +114,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
         return djelme_registry.get_recordtype_app_label(self)
 
 
-class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
+class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
     """a subclass of elasticsearch8.dsl.Document, with conveniences
 
     >>> class MyAbstractRecord(DjelmeRecordtype):
@@ -145,24 +142,28 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
     """
 
     UNIQUE_TOGETHER_FIELDS: typing.ClassVar[collections.abc.Iterable[str]] = ()
-    unique_id: str = mapped_field(Keyword(), default="")  # filled on save
+    unique_id: str = esdsl.mapped_field(esdsl.Keyword(), default="")  # filled on save
 
     class Meta:
         abstract = True
 
     @classmethod
-    def record(cls, *, using=None, **kwargs):
+    def record(
+        cls, *, using: str | None = None, **kwargs: typing.Any
+    ) -> "typing.Self":  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
         """Persist a record in Elasticsearch."""
         _instance = cls(**kwargs)
         _instance.save(using=using)
         return _instance
 
     @classmethod
-    def check_djelme_setup(cls, using: str | Elastic8Client | None = None) -> bool:
+    def check_djelme_setup(cls, using: str | None = None) -> bool:
+        # this base class has only a single index -- does it exist?
         return bool(cls._index.get(using=using))
 
     @classmethod
     def _djelme_teardown(cls, es_client):
+        # this base class has only a single index -- delete it
         cls._index.delete(using=es_client)
 
     @classmethod
@@ -229,9 +230,14 @@ class DjelmeRecordtype(Document, metaclass=_DjelmeRecordtypeMetaclass):
 
 
 class TimeseriesRecord(DjelmeRecordtype):
-    timestamp: datetime.datetime = mapped_field(
+    timestamp: datetime.datetime = esdsl.mapped_field(
         default_factory=lambda: django.utils.timezone.now()
     )
+    # the 'version' field type allows range queries on semver-like strings
+    # that fit perfectly with "timeparts" representation of a UTC datetime
+    # as a sequence of integers -- helps to avoid time zones and date math
+    # (e.g. '2000' < '2000.5.10' < '2000.5.20.20.20' < '2000.11' < '2001')
+    timestamp_parts: str = esdsl.mapped_field(esdsl.Version(), default="")
 
     class Meta:
         abstract = True
@@ -240,18 +246,57 @@ class TimeseriesRecord(DjelmeRecordtype):
     # class methods
 
     @classmethod
-    def init(cls, index=None, using=None):
-        """Create the index and populate the mappings in elasticsearch.
+    def init(cls, index=None, using=None) -> None:
+        """Create an index template with mappings for timeseries indexes
 
         overrides elasticsearch.Document.init
+        (but doesn't call super().init(), which would create a "now" index)
         """
         assert not cls.is_abstract
-        # to init timeseries indexes, create only the template
         cls.sync_index_template(using=using)
-        return super().init(
-            index=(index or cls.format_timeseries_index_name()),
-            using=cls._get_using(using),
+
+    @classmethod
+    def search(cls, *, index=None, **kwargs):
+        return super().search(
+            index=(index or cls.format_timeseries_index_pattern()),
+            **kwargs,
         )
+
+    @classmethod
+    def search_timeseries_range(
+        cls,
+        from_when: tuple[int, ...] | datetime.date,
+        until_when: tuple[int, ...] | datetime.date,
+        **kwargs: typing.Any,
+    ) -> typing.Any:
+        _index_pattern = cls.format_timeseries_index_pattern_for_range(
+            from_when, until_when
+        )
+        _timestamp_q = esdsl.query.Range(
+            timestamp_parts={
+                "gte": timeseries_naming.full_semverlike_timeparts(from_when),
+                "lt": timeseries_naming.full_semverlike_timeparts(until_when),
+            }
+        )
+        return cls.search(index=_index_pattern).filter(_timestamp_q)
+
+    @classmethod
+    def refresh_timeseries_indexes(cls, using: str | None = None) -> None:
+        cls._get_connection(using).indices.refresh(
+            index=cls.format_timeseries_index_pattern()
+        )
+
+    @classmethod
+    def each_timeseries_index(
+        cls, using: str | None = None
+    ) -> collections.abc.Iterator[tuple[str, dict[str, typing.Any]]]:
+        _resp = cls._get_connection(using).indices.get(
+            index=cls.format_timeseries_index_pattern(),
+        )
+        for _index_name, _index_info in _resp.items():
+            assert isinstance(_index_name, str)
+            assert isinstance(_index_info, dict)
+            yield _index_name, _index_info
 
     @classmethod
     def _djelme_teardown(cls, es8_client: Elastic8Client) -> None:
@@ -277,7 +322,7 @@ class TimeseriesRecord(DjelmeRecordtype):
         )
 
     @classmethod
-    def get_timeseries_template(cls) -> ComposableIndexTemplate:
+    def get_timeseries_template(cls) -> esdsl.ComposableIndexTemplate:
         return cls._index.as_composable_template(
             template_name=cls.get_timeseries_template_name(),
             pattern=cls.format_timeseries_index_pattern(),
@@ -310,6 +355,20 @@ class TimeseriesRecord(DjelmeRecordtype):
             recordtype=cls.get_timeseries_recordtype_name(),
             timeparts=timeparts,
             max_timedepth=cls.get_timedepth(),
+        )
+
+    @classmethod
+    def format_timeseries_index_pattern_for_range(
+        cls,
+        from_when: tuple[int, ...] | datetime.date,
+        until_when: tuple[int, ...] | datetime.date,
+    ) -> str:
+        return timeseries_naming.format_index_pattern_for_range(
+            cls.get_timeseries_name_prefix(),
+            cls.get_timeseries_recordtype_name(),
+            from_when,
+            until_when,
+            timedepth=cls.get_timedepth(),
         )
 
     @classmethod
@@ -404,6 +463,13 @@ class TimeseriesRecord(DjelmeRecordtype):
     ###
     # instance methods
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.timestamp_parts = self._build_timestamp_parts()
+
+    def _build_timestamp_parts(self) -> str:
+        return timeseries_naming.full_semverlike_timeparts(self.timestamp)
+
     def djelme_index_name(self) -> str:
         assert self.timestamp is not None
         return self.format_timeseries_index_name(self.timestamp)
@@ -444,11 +510,11 @@ class CountedUsageRecord(EventRecord):
     """
 
     # for ProtoCountedUsage:
-    platform_iri: str = mapped_field(required=True, default="")
-    database_iri: str = mapped_field(required=True, default="")
-    item_iri: str = mapped_field(required=True, default="")
-    sessionhour_id: str = mapped_field(Keyword(), default="")
-    within_iris: list[str] = mapped_field(Keyword(), default_factory=list)
+    platform_iri: str = esdsl.mapped_field(required=True, default="")
+    database_iri: str = esdsl.mapped_field(required=True, default="")
+    item_iri: str = esdsl.mapped_field(required=True, default="")
+    sessionhour_id: str = esdsl.mapped_field(esdsl.Keyword(), default="")
+    within_iris: list[str] = esdsl.mapped_field(esdsl.Keyword(), default_factory=list)
 
     class Meta:
         abstract = True
@@ -457,9 +523,9 @@ class CountedUsageRecord(EventRecord):
     def record(
         cls,
         *,
-        # each usage record needs a sessionhour_id -- for migrating old data, can set explicitly
+        # each usage record needs a sessionhour_id -- for migrating old data, can set explicitly...
         sessionhour_id: str = "",
-        # ...but when saving new data, give either the dirty identifying strings
+        # ...but when saving new data, give either the dirty identifying strings:
         user_id: str = "",
         session_id: str = "",
         request_host: str = "",
@@ -518,7 +584,7 @@ class DjelmeElastic8Backend:
     @property
     def elastic8_client(self) -> Elastic8Client:
         # assumes `connections.configure` was already called
-        return connections.get_connection(self._elastic8dsl_connection_name)
+        return esdsl.connections.get_connection(self._elastic8dsl_connection_name)
 
     @property
     def _elastic8dsl_connection_name(self) -> str:
@@ -546,6 +612,7 @@ if __debug__ and typing.TYPE_CHECKING:
     # for static type-checking; verify intent
     _: type[ProtoCountedUsage] = CountedUsageRecord
     __: type[ProtoDjelmeBackend] = DjelmeElastic8Backend
+    ___: type[ProtoDjelmeRecord] = DjelmeRecordtype
 
 ###
 # names expected by ProtoDjelmeImp
@@ -556,7 +623,7 @@ djelme_backend = DjelmeElastic8Backend  # for ProtoDjelmeImp
 def djelme_when_ready(  # for ProtoDjelmeImp
     backends: collections.abc.Iterable[ProtoDjelmeBackend],
 ) -> None:
-    connections.configure(
+    esdsl.connections.configure(
         **{
             _backend._elastic8dsl_connection_name: _backend._elastic8dsl_connection_kwargs
             for _backend in backends
