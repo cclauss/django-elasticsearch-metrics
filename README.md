@@ -6,8 +6,8 @@ Django app for storing time-series metrics in Elasticsearch.
 
 python importables:
 - `elasticsearch_metrics`
-- `elasticsearch_metrics.imps.elastic8`
-- `elasticsearch_metrics.imps.elastic6`
+- `elasticsearch_metrics.imps.elastic8` (an implementation with elasticsearch 8)
+- `elasticsearch_metrics.imps.elastic6` (an implementation with elasticsearch 6; deprecated)
 - ...
 
 ## Pre-requisites
@@ -58,7 +58,7 @@ class UsageRecord(EventRecord):
     item_id: int
 
     class Index:
-        using = "my-es8-backend"  # optional if only one backend
+        using = "my-es8-backend"  # backend name -- required if multiple backends use the same imp
 ```
 
 Either enable autosetup...
@@ -98,19 +98,26 @@ UsageRecord.search_timeseries_range(datetime.date(2030, 1, 1), datetime.date(203
 
 ## Timeseries indexes
 
-By default, behind the scenes, a new elasticsearch index is created for each record type for each month
-in which a record is saved (using UTC timezone). You can set a default change the per-index timespan by
-setting `Meta.timedepth` on the record type.
+By default, behind the scenes, a new elasticsearch index is created for each record type for each day
+in which a record is saved (using UTC timezone). You can change this for a record type by setting
+`Meta.timedepth`, or change the default timedepth with the setting `DJELME_DEFAULT_TIMEDEPTH` (see below).
 
-- index per day, '...YYYY_MM_DD...': `timedepth = 3`
-- index per month, '...YYYY_MM...': `timedepth = 2`
+```python
+class MyEventWithMonthlyIndexes(EventRecord):
+    class Meta:
+        timedepth = 2  # YYYY_MM
+```
+
 - index per year, '...YYYY...': `timedepth = 1`
+- index per month, '...YYYY_MM...': `timedepth = 2`
+- index per day, '...YYYY_MM_DD...': `timedepth = 3` (default)
+- index per hour, '...YYYY_MM_DD_HH...': `timedepth = 4`
 
 
 ## Index settings
 
-You can configure the index template settings by setting
-`Index.settings` on a record type.
+You can configure the index settings that will be set on the index template
+and used for each new timeseries index with `Index.settings` on a record type.
 
 ```python
 class UsageRecord(EventRecord):

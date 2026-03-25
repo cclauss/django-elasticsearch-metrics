@@ -53,7 +53,7 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     def setUp(self):
         super().setUp()
-        _name_prefix = uuid.uuid4().hex
+        _name_prefix = f'{uuid.uuid4().hex}_'
         self.enterContext(
             mock.patch(
                 "elasticsearch_metrics.imps.elastic8.TimeseriesRecord.get_timeseries_name_prefix",

@@ -31,7 +31,7 @@ TimeseriesIndexNamePattern = tuple[str, str, tuple[int, ...]]
 
 
 def format_index_name(
-    prefix: str,
+    app_label: str,
     recordtype: str,
     timeparts: collections.abc.Sequence[int] = (),  # empty () -- all time
     max_timedepth: int | None = None,
@@ -43,7 +43,7 @@ def format_index_name(
     'a_rt_9999_22_00_'
     """
     _parts = [
-        format_namepart(prefix),
+        format_namepart(app_label),
         format_namepart(recordtype),
     ]
     if timeparts:
@@ -60,21 +60,21 @@ def format_index_name(
 def format_index_name_for_date(
     given_date: datetime.date,
     *,
-    prefix: str,
+    app_label: str,
     recordtype: str,
     timedepth: int,
 ) -> str:
     """get a full/specific index name, no wildcards or lists
-    >>> format_index_name_for_date(datetime.date(9876,5,4), prefix='ap', recordtype='rt', timedepth=2)
+    >>> format_index_name_for_date(datetime.date(9876,5,4), app_label='ap', recordtype='rt', timedepth=2)
     'ap_rt_9876_05_'
     """
     return format_index_name(
-        prefix, recordtype, timeparts_from_date(given_date, timedepth)
+        app_label, recordtype, timeparts_from_date(given_date, timedepth)
     )
 
 
 def format_index_pattern(
-    prefix: str,
+    app_label: str,
     recordtype: str,
     timeparts: collections.abc.Sequence[int] = (),  # empty () -- all time
     max_timedepth: int | None = None,
@@ -87,7 +87,7 @@ def format_index_pattern(
     >>> format_index_pattern('a', 'rt', (1, 2, 3, 4, 5), max_timedepth=3)
     'a_rt_01_02_03_*'
     """
-    return f"{format_index_name(prefix, recordtype, timeparts, max_timedepth)}*"
+    return f"{format_index_name(app_label, recordtype, timeparts, max_timedepth)}*"
 
 
 def _each_timeparts_for_timerange(
@@ -135,7 +135,7 @@ def _each_timeparts_for_timerange(
 
 
 def _each_indexpattern_for_timerange(
-    prefix: str,
+    app_label: str,
     recordtype: str,
     from_timeparts: collections.abc.Sequence[int],
     until_timeparts: collections.abc.Sequence[int],
@@ -156,13 +156,13 @@ def _each_indexpattern_for_timerange(
             # intuitively, zero is a fine value for any datepart except the second and third
             continue  # skip month zero and day zero
         if _is_wildcard:
-            yield format_index_pattern(prefix, recordtype, _timeparts)
+            yield format_index_pattern(app_label, recordtype, _timeparts)
         else:
-            yield format_index_name(prefix, recordtype, _timeparts)
+            yield format_index_name(app_label, recordtype, _timeparts)
 
 
 def format_index_pattern_for_timerange(
-    prefix: str,
+    app_label: str,
     recordtype: str,
     from_timeparts: collections.abc.Sequence[int],
     until_timeparts: collections.abc.Sequence[int],
@@ -209,7 +209,7 @@ def format_index_pattern_for_timerange(
     """
     return ",".join(
         _each_indexpattern_for_timerange(
-            prefix,
+            app_label,
             recordtype,
             from_timeparts,
             until_timeparts,
@@ -222,7 +222,7 @@ def format_index_pattern_for_timerange(
 
 
 def format_index_pattern_for_range(
-    prefix: str,
+    app_label: str,
     recordtype: str,
     from_when: tuple[int, ...] | datetime.date,
     until_when: tuple[int, ...] | datetime.date,
@@ -252,7 +252,7 @@ def format_index_pattern_for_range(
     'ap_rt_200_05_*'
     """
     return format_index_pattern_for_timerange(
-        prefix=prefix,
+        app_label=app_label,
         recordtype=recordtype,
         from_timeparts=_whenparts(from_when, timedepth),
         until_timeparts=_whenparts(until_when, timedepth),
@@ -263,7 +263,7 @@ def format_index_pattern_for_range(
 
 
 def format_template_name(
-    prefix: str,
+    app_label: str,
     recordtype: str,
 ) -> str:
     """
@@ -271,7 +271,7 @@ def format_template_name(
     'blah_fleh__template'
     """
     return _DELIMITER.join(
-        (format_namepart(prefix), format_namepart(recordtype), _TEMPLATE_NAME_SUFFIX)
+        (format_namepart(app_label), format_namepart(recordtype), _TEMPLATE_NAME_SUFFIX)
     )
 
 

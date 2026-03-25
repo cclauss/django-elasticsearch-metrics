@@ -314,12 +314,13 @@ class TimeseriesRecord(DjelmeRecordtype):
     def format_timeseries_index_name(
         cls, timestamp: datetime.date | None = None
     ) -> str:
-        return timeseries_naming.format_index_name_for_date(
+        _index_name = timeseries_naming.format_index_name_for_date(
             timestamp or django.utils.timezone.now(),
-            prefix=cls.get_timeseries_name_prefix(),
+            app_label=cls.app_label,
             recordtype=cls.get_timeseries_recordtype_name(),
             timedepth=cls.get_timedepth(),
         )
+        return "".join((cls.get_timeseries_name_prefix(), _index_name))
 
     @classmethod
     def get_timeseries_template(cls) -> esdsl.ComposableIndexTemplate:
@@ -330,9 +331,10 @@ class TimeseriesRecord(DjelmeRecordtype):
 
     @classmethod
     def get_timeseries_template_name(cls) -> str:
-        return timeseries_naming.format_template_name(
-            cls.get_timeseries_name_prefix(), cls.get_timeseries_recordtype_name()
+        _template_name = timeseries_naming.format_template_name(
+            cls.app_label, cls.get_timeseries_recordtype_name()
         )
+        return "".join(cls.get_timeseries_name_prefix(), _template_name)
 
     @classmethod
     def get_timeseries_recordtype_name(cls) -> str:
@@ -344,18 +346,19 @@ class TimeseriesRecord(DjelmeRecordtype):
 
     @classmethod
     def get_timeseries_name_prefix(cls) -> str:
-        _name_prefix = cls._get_meta_attr("timeseries_name_prefix") or cls.app_label
+        _name_prefix = cls._get_meta_attr("timeseries_name_prefix") or ""
         assert isinstance(_name_prefix, str)
         return _name_prefix
 
     @classmethod
     def format_timeseries_index_pattern(cls, timeparts: tuple[int, ...] = ()) -> str:
-        return timeseries_naming.format_index_pattern(
-            prefix=cls.get_timeseries_name_prefix(),
+        _pattern = timeseries_naming.format_index_pattern(
+            app_label=cls.app_label,
             recordtype=cls.get_timeseries_recordtype_name(),
             timeparts=timeparts,
             max_timedepth=cls.get_timedepth(),
         )
+        return "".join((cls.get_timeseries_name_prefix(), _pattern))
 
     @classmethod
     def format_timeseries_index_pattern_for_range(
@@ -363,13 +366,14 @@ class TimeseriesRecord(DjelmeRecordtype):
         from_when: tuple[int, ...] | datetime.date,
         until_when: tuple[int, ...] | datetime.date,
     ) -> str:
-        return timeseries_naming.format_index_pattern_for_range(
-            cls.get_timeseries_name_prefix(),
+        _pattern = timeseries_naming.format_index_pattern_for_range(
+            cls.app_label,
             cls.get_timeseries_recordtype_name(),
             from_when,
             until_when,
             timedepth=cls.get_timedepth(),
         )
+        return "".join((cls.get_timeseries_name_prefix(), _pattern))
 
     @classmethod
     def get_timedepth(cls) -> int:
@@ -467,12 +471,18 @@ class TimeseriesRecord(DjelmeRecordtype):
         super().__init__(*args, **kwargs)
         self.timestamp_parts = self._build_timestamp_parts()
 
+    @property
+    def _timeseries_timestamp(self) -> datetime.datetime:
+        """the datetime used to choose a timeseries index"""
+        return self.timestamp
+
     def _build_timestamp_parts(self) -> str:
-        return timeseries_naming.full_semverlike_timeparts(self.timestamp)
+        return timeseries_naming.full_semverlike_timeparts(self._timeseries_timestamp)
 
     def djelme_index_name(self) -> str:
-        assert self.timestamp is not None
-        return self.format_timeseries_index_name(self.timestamp)
+        _when = self._timeseries_timestamp
+        assert _when is not None
+        return self.format_timeseries_index_name(_when)
 
     def save(
         self,
@@ -485,9 +495,8 @@ class TimeseriesRecord(DjelmeRecordtype):
     ) -> typing.Any:
         """save the record
 
-        overrides `save` to choose a timeseries index based on `self.timestamp`
+        overrides `save` to choose a timeseries index based on `self._timeseries_timestamp`
         """
-        assert self.timestamp is not None
         if index is None:
             index = self.djelme_index_name()
         ret = super().save(using=using, index=index, **kwargs)
@@ -565,6 +574,17 @@ class CyclicRecord(TimeseriesRecord):
 
     class Meta:
         abstract = True
+
+    def __init_subclass__(cls, *, cycle_timedepth: int, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+
+    @property
+    def _timeseries_timestamp(self) -> datetime.datetime:
+        """the datetime used to choose a timeseries index
+
+        overrides TimeseriesRecord to index by the start of the covered timespan
+        """
+        return self.covers_from
 
 
 @dataclasses.dataclass
