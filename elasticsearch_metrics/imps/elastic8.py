@@ -110,8 +110,10 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
         return bool(self._get_meta_attr("abstract", False))
 
     @property
-    def app_label(self) -> str | None:
-        return djelme_registry.get_recordtype_app_label(self)
+    def app_label(self) -> str:
+        _app_label = djelme_registry.get_recordtype_app_label(self)
+        assert _app_label
+        return _app_label
 
 
 class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
