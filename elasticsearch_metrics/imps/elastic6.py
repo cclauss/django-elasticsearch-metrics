@@ -99,8 +99,8 @@ class MetricMeta(IndexMeta):
             # compute it as <app label>_<lowercased class name>
             template_name = f"{app_label}_{metric_name}"
 
-        new_cls._template_name = template_name
-        new_cls._template_pattern = f"{template_name}_*"  # template pattern
+        new_cls.__template_name = template_name
+        new_cls.__template_pattern = f"{template_name}_*"  # template pattern
         # Abstract base metrics can't be instantiated and don't appear in
         # the list of metrics for an app.
         if not abstract:
@@ -134,6 +134,16 @@ class MetricMeta(IndexMeta):
         for a in index_config.get("analyzers", ()):
             i.analyzer(a)
         return i
+
+    @property
+    def _template_name(self):
+        _prefix = self.get_timeseries_name_prefix()
+        return f"{_prefix}{self.__template_name}"
+
+    @property
+    def _template_pattern(self):
+        _prefix = self.get_timeseries_name_prefix()
+        return f"{_prefix}{self.__template_pattern}"
 
 
 # We need this intermediate BaseMetric class so that
@@ -262,10 +272,7 @@ class BaseMetric(metaclass=MetricMeta):
             settings, "ELASTICSEARCH_METRICS_DATE_FORMAT", DEFAULT_DATE_FORMAT
         )
         date_formatted = date.strftime(dateformat)
-        _name_parts = (cls._template_name, date_formatted)
-        if _prefix := cls.get_timeseries_name_prefix():
-            _name_parts = (_prefix, *_name_parts)
-        return "_".join(_name_parts)
+        return f"{cls._template_name}_{date_formatted}"
 
 
 class Metric(Document, BaseMetric):
