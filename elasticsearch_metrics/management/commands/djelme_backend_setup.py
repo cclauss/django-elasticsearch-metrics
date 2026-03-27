@@ -34,7 +34,7 @@ class Command(BaseCommand):
                 )
             except LookupError as _err:
                 raise CommandError(
-                    f"No recordtypes found for app {options["app_label"]!r}"
+                    f"No recordtypes found for app {_app_label!r}"
                 ) from _err
             for _backend_name, _each_recordtype in _types_by_backend.items():
                 _backend = djelme_registry.get_backend(_backend_name)
