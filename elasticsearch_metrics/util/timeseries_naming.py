@@ -174,12 +174,15 @@ def format_index_pattern_for_timerange(
 ) -> str:
     """get an index-name pattern for all indexes within a timepart range
 
+    choose a wildcard based on shared timeparts
     >>> format_index_pattern_for_timerange('ap', 'rt',
     ...     (5020, 2, 2), (5020, 12, 20), timedepth=2)
     'ap_rt_5020_*'
     >>> format_index_pattern_for_timerange('ap', 'rt',
     ...     (5020, 2, 2), (5020, 2, 20), timedepth=2)
     'ap_rt_5020_02_*'
+
+    with `include_less_granular=True` 
     >>> format_index_pattern_for_timerange('ap', 'rt',
     ...     (5020, 2, 2), (5020, 2, 20), timedepth=2, include_less_granular=True)
     'ap_rt_,ap_rt_5020_,ap_rt_5020_02_*'
@@ -475,3 +478,10 @@ def semverlike_timeparts(when: tuple[int, ...] | datetime.date, timedepth: int) 
     '3000.9.1'
     """
     return full_semverlike_timeparts(_whenparts(when, timedepth))
+
+
+if __debug__:
+    __test__ = {
+        'format_index_pattern_for_timerange': '''
+'''
+    }
