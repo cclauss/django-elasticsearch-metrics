@@ -349,7 +349,6 @@ class DjelmeElastic6Backend:
 
     backend_name: str
     imp_kwargs: dict[str, str]
-    namespace_prefix: str = ""
 
     @property
     def elastic6_client(self):

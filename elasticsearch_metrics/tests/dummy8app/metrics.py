@@ -43,6 +43,8 @@ class ThingHappened(djelme.EventRecord):
 
 # TODO: tests using ThingHappeningsReport
 class ThingHappeningsReport(djelme.CyclicRecord):
+    CYCLE_TIMEDEPTH = 2
+
     thing_id: str
     happen_count: int
 
@@ -50,5 +52,5 @@ class ThingHappeningsReport(djelme.CyclicRecord):
         using = "my_elastic8_reports"
 
     class Meta:
-        timeseries_name_prefix = "blarg"
+        timeseries_name_prefix = "blarg_"
         timedepth = 2  # monthly timeseries indexes

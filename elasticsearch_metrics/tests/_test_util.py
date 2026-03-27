@@ -53,7 +53,7 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     def setUp(self):
         super().setUp()
-        _name_prefix = f'{uuid.uuid4().hex}_'
+        _name_prefix = f"{uuid.uuid4().hex}_"
         self.enterContext(
             mock.patch(
                 "elasticsearch_metrics.imps.elastic8.TimeseriesRecord.get_timeseries_name_prefix",
@@ -76,11 +76,14 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
 
     def setup_backends(self):
         # backends based on settings in django.conf.settings.DJELME_BACKENDS
-        for _backend_name, _recordtypes in djelme_registry.each_recordtype_by_backend():
+        _types_by_backend = djelme_registry.recordtypes_by_backend()
+        for _backend_name, _recordtypes in _types_by_backend.items():
             djelme_registry.get_backend(_backend_name).djelme_setup(_recordtypes)
 
     def teardown_backends(self):
-        for _backend_name, _recordtypes in djelme_registry.each_recordtype_by_backend():
+        # backends based on settings in django.conf.settings.DJELME_BACKENDS
+        _types_by_backend = djelme_registry.recordtypes_by_backend()
+        for _backend_name, _recordtypes in _types_by_backend.items():
             djelme_registry.get_backend(_backend_name).djelme_teardown(_recordtypes)
 
 

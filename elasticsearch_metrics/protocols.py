@@ -17,7 +17,6 @@ class ProtoDjelmeImp(typing.Protocol):
     def djelme_backend(
         backend_name: str,
         imp_kwargs: dict[str, str],
-        namespace_prefix: str = "",
     ) -> ProtoDjelmeBackend:
         """djelme_backend: impstantiate a djelme backend"""
 

@@ -1,8 +1,6 @@
 import unittest
 import datetime as dt
 
-from django.utils import timezone
-
 import elasticsearch8
 from elasticsearch8.dsl import (
     ComposableIndexTemplate,
@@ -38,102 +36,120 @@ def _es8_client(
 
 
 class TestNamesAndPatterns(SimpleDjelmeTestCase):
-    def test_format_timeseries_index_name(self):
-        date = dt.date(2020, 2, 14)
+    def test_index_name(self):
+        _stamp = dt.datetime(2020, 2, 14)
+        _dum8event = Dummy8Event(timestamp=_stamp, intensity=7)
         self.assertEqual(
-            Dummy8Event.format_timeseries_index_name(date),
-            "dummy8app_dummy8event_2020_02_14_",
+            _dum8event.djelme_index_name(),
+            "dummy8app_dummy8event_2020.2.14.",
+        )
+        _month8event = Monthly8Event(timestamp=_stamp, intenzity=8)
+        self.assertEqual(
+            _month8event.djelme_index_name(),
+            "dummy8evenzdummy8app_eventlog_2020.2.",
+        )
+        _thingevent = ThingHappened(timestamp=_stamp, thing_id="hi")
+        self.assertEqual(
+            _thingevent.djelme_index_name(),
+            "dummy8app_happen_2020.",
+        )
+        _thingreport = ThingHappeningsReport(
+            timestamp=_stamp,
+            cycle_timeparts="1999.3.15",
+            thing_id="wo",
+            happen_count=2,
         )
         self.assertEqual(
-            Monthly8Event.format_timeseries_index_name(date),
-            "dummy8evenz_eventlog_2020_02_",
-        )
-        self.assertEqual(
-            ThingHappened.format_timeseries_index_name(date),
-            "dummy8app_happen_2020_",
-        )
-        self.assertEqual(
-            ThingHappeningsReport.format_timeseries_index_name(date),
-            "blarg_thinghappeningsreport_2020_02_",
+            _thingreport.djelme_index_name(),
+            "blarg_dummy8app_thinghappeningsreport_1999.3.",
         )
 
     def test_format_index_name_respects_date_format_setting(self):
+        _stamp = dt.datetime(2020, 2, 14)
         with self.settings(DJELME_DEFAULT_TIMEDEPTH=4):
-            date = dt.date(2020, 2, 14)
             # no timedepth set; use default setting
+            _dum8event = Dummy8Event(timestamp=_stamp, intensity=2)
             self.assertEqual(
-                Dummy8Event.format_timeseries_index_name(date),
-                "dummy8app_dummy8event_2020_02_14_00_",
+                _dum8event.djelme_index_name(),
+                "dummy8app_dummy8event_2020.2.14.0.",
             )
             # timedepth set; ignore default setting
+            _month8event = Monthly8Event(timestamp=_stamp, intenzity=2)
             self.assertEqual(
-                Monthly8Event.format_timeseries_index_name(date),
-                "dummy8evenz_eventlog_2020_02_",
+                _month8event.djelme_index_name(),
+                "dummy8evenzdummy8app_eventlog_2020.2.",
+            )
+            _thingevent = ThingHappened(timestamp=_stamp, thing_id="ha")
+            self.assertEqual(
+                _thingevent.djelme_index_name(),
+                "dummy8app_happen_2020.",
+            )
+            _thingreport = ThingHappeningsReport(
+                timestamp=_stamp,
+                cycle_timeparts="1999.3.16",
+                thing_id="wha",
+                happen_count=0,
             )
             self.assertEqual(
-                ThingHappened.format_timeseries_index_name(date),
-                "dummy8app_happen_2020_",
-            )
-            self.assertEqual(
-                ThingHappeningsReport.format_timeseries_index_name(date),
-                "blarg_thinghappeningsreport_2020_02_",
+                _thingreport.djelme_index_name(),
+                "blarg_dummy8app_thinghappeningsreport_1999.3.",
             )
 
     def test_format_timeseries_index_pattern__lotsa_parts(self):
         _timeparts = (2020, 2, 14, 0, 1, 2)
         self.assertEqual(
             Dummy8Event.format_timeseries_index_pattern(_timeparts),
-            "dummy8app_dummy8event_2020_02_14_*",
+            "dummy8app_dummy8event_2020.2.14.*",
         )
         self.assertEqual(
             Monthly8Event.format_timeseries_index_pattern(_timeparts),
-            "dummy8evenz_eventlog_2020_02_*",
+            "dummy8evenzdummy8app_eventlog_2020.2.*",
         )
         self.assertEqual(
             ThingHappened.format_timeseries_index_pattern(_timeparts),
-            "dummy8app_happen_2020_*",
+            "dummy8app_happen_2020.*",
         )
         self.assertEqual(
             ThingHappeningsReport.format_timeseries_index_pattern(_timeparts),
-            "blarg_thinghappeningsreport_2020_02_*",
+            "blarg_dummy8app_thinghappeningsreport_2020.2.*",
         )
 
     def test_format_timeseries_index_pattern__some_parts(self):
         _timeparts = (2020, 2, 14)
         self.assertEqual(
             Dummy8Event.format_timeseries_index_pattern(_timeparts),
-            "dummy8app_dummy8event_2020_02_14_*",
+            "dummy8app_dummy8event_2020.2.14.*",
         )
         self.assertEqual(
             Monthly8Event.format_timeseries_index_pattern(_timeparts),
-            "dummy8evenz_eventlog_2020_02_*",
+            "dummy8evenzdummy8app_eventlog_2020.2.*",
         )
         self.assertEqual(
             ThingHappened.format_timeseries_index_pattern(_timeparts),
-            "dummy8app_happen_2020_*",
+            "dummy8app_happen_2020.*",
         )
         self.assertEqual(
             ThingHappeningsReport.format_timeseries_index_pattern(_timeparts),
-            "blarg_thinghappeningsreport_2020_02_*",
+            "blarg_dummy8app_thinghappeningsreport_2020.2.*",
         )
 
     def test_format_timeseries_index_pattern__one_part(self):
         _timeparts = (2020,)
         self.assertEqual(
             Dummy8Event.format_timeseries_index_pattern(_timeparts),
-            "dummy8app_dummy8event_2020_*",
+            "dummy8app_dummy8event_2020.*",
         )
         self.assertEqual(
             Monthly8Event.format_timeseries_index_pattern(_timeparts),
-            "dummy8evenz_eventlog_2020_*",
+            "dummy8evenzdummy8app_eventlog_2020.*",
         )
         self.assertEqual(
             ThingHappened.format_timeseries_index_pattern(_timeparts),
-            "dummy8app_happen_2020_*",
+            "dummy8app_happen_2020.*",
         )
         self.assertEqual(
             ThingHappeningsReport.format_timeseries_index_pattern(_timeparts),
-            "blarg_thinghappeningsreport_2020_*",
+            "blarg_dummy8app_thinghappeningsreport_2020.*",
         )
 
     def test_format_index_pattern_respects_date_format_setting(self):
@@ -141,15 +157,15 @@ class TestNamesAndPatterns(SimpleDjelmeTestCase):
             _timeparts = (2020, 2, 14, 0, 1, 2)
             self.assertEqual(
                 Dummy8Event.format_timeseries_index_pattern(_timeparts),
-                "dummy8app_dummy8event_2020_02_14_00_*",
+                "dummy8app_dummy8event_2020.2.14.0.*",
             )
             self.assertEqual(
                 Monthly8Event.format_timeseries_index_pattern(_timeparts),
-                "dummy8evenz_eventlog_2020_02_*",
+                "dummy8evenzdummy8app_eventlog_2020.2.*",
             )
             self.assertEqual(
                 ThingHappened.format_timeseries_index_pattern(_timeparts),
-                "dummy8app_happen_2020_*",
+                "dummy8app_happen_2020.*",
             )
 
 
@@ -220,9 +236,9 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
     ):
         template = Monthly8Event.get_timeseries_template()
         # prefix and recordtype specified in class Meta
-        assert template._template_name == "dummy8evenz_eventlog__template"
+        assert template._template_name == "dummy8evenzdummy8app_eventlog__template"
         # template pattern generated using same options
-        assert "dummy8evenz_eventlog_*" in template.to_dict()["index_patterns"]
+        assert "dummy8evenzdummy8app_eventlog_*" in template.to_dict()["index_patterns"]
 
     def test_inheritance(self):
         class MyBaseRecord(djelme.TimeseriesRecord):
@@ -265,17 +281,17 @@ class TestRecord(MockSaveTestCase):
         p = ThingHappened.record(timestamp=timestamp, thing_id="abc12")
         assert self.mocked_es8_save.call_count == 1
         assert p.timestamp == timestamp
-        assert p.timestamp_parts == "2017.8.21.0.0.0"
+        assert p.timeseries_timeparts == "2017.8.21.0.0.0"
         assert p.thing_id == "abc12"
 
-    @unittest.mock.patch.object(timezone, "now")
-    def test_defaults_timestamp_to_now(self, mock_now):
-        fake_now = dt.datetime(2016, 8, 21)
-        mock_now.return_value = fake_now
-
-        p = ThingHappened.record(thing_id="abc12")
+    def test_defaults_timestamp_to_now(self):
+        _fake_now = dt.datetime(2016, 8, 21, tzinfo=dt.timezone.utc)
+        with unittest.mock.patch(
+            "elasticsearch_metrics.imps.elastic8.utcnow", return_value=_fake_now
+        ):
+            p = ThingHappened.record(thing_id="abc12")
         assert self.mocked_es8_save.call_count == 1
-        assert p.timestamp == fake_now
+        assert p.timestamp == _fake_now
 
 
 class TestSignals(MockSaveTestCase):
@@ -334,7 +350,7 @@ class TestRealCreate(RealElasticTestCase, autosetup_djelme_backends=True):
         )
         assert _fetched_doc
         assert _fetched_doc.timestamp == _doc.timestamp
-        assert _fetched_doc.timestamp_parts == _doc.timestamp_parts
+        assert _fetched_doc.timeseries_timeparts == _doc.timeseries_timeparts
         assert _fetched_doc.thing_id == _doc.thing_id == _thing_id
         assert _fetched_doc.happen_code == _doc.happen_code == _happen_code
 
@@ -356,7 +372,7 @@ class TestRealCreate(RealElasticTestCase, autosetup_djelme_backends=True):
         )
         assert _fetched_doc
         assert _fetched_doc.timestamp == _doc.timestamp
-        assert _fetched_doc.timestamp_parts == _doc.timestamp_parts
+        assert _fetched_doc.timeseries_timeparts == _doc.timeseries_timeparts
         assert _fetched_doc.thing_id == _doc.thing_id == _thing_id
         assert _fetched_doc.happen_code == _doc.happen_code == _happen_code
 
@@ -430,12 +446,12 @@ class TestDailyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         self.assertEqual(
             _index_names,
             {
-                "dummy8event_1234_05_06_",
-                "dummy8event_1234_05_07_",
-                "dummy8event_1234_06_01_",
-                "dummy8event_1235_05_06_",
-                "dummy8event_2345_06_09_",
-                "dummy8event_2345_07_09_",
+                "dummy8app_dummy8event_1234.5.6.",
+                "dummy8app_dummy8event_1234.5.7.",
+                "dummy8app_dummy8event_1234.6.1.",
+                "dummy8app_dummy8event_1235.5.6.",
+                "dummy8app_dummy8event_2345.6.9.",
+                "dummy8app_dummy8event_2345.7.9.",
             },
         )
 
@@ -492,11 +508,11 @@ class TestMonthlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         self.assertEqual(
             _index_names,
             {
-                "eventlog_1234_05_",
-                "eventlog_1234_06_",
-                "eventlog_1235_05_",
-                "eventlog_2345_06_",
-                "eventlog_2345_07_",
+                "dummy8app_eventlog_1234.5.",
+                "dummy8app_eventlog_1234.6.",
+                "dummy8app_eventlog_1235.5.",
+                "dummy8app_eventlog_2345.6.",
+                "dummy8app_eventlog_2345.7.",
             },
         )
 
@@ -553,9 +569,9 @@ class TestYearlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         self.assertEqual(
             _index_names,
             {
-                "happen_1234_",
-                "happen_1235_",
-                "happen_2345_",
+                "dummy8app_happen_1234.",
+                "dummy8app_happen_1235.",
+                "dummy8app_happen_2345.",
             },
         )
 

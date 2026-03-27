@@ -23,6 +23,7 @@ import logging
 import typing
 
 import django
+from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 from elasticsearch8.exceptions import NotFoundError
 from elasticsearch8 import Elasticsearch as Elastic8Client
@@ -38,6 +39,7 @@ from elasticsearch_metrics.protocols import (
     ProtoDjelmeRecord,
 )
 from elasticsearch_metrics.util import timeseries_naming
+from elasticsearch_metrics.util.timeparts import format_full_timeparts
 from elasticsearch_metrics.util.unique_together import get_unique_id
 from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
 
@@ -46,6 +48,10 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEDEPTH_SETTING = "DJELME_DEFAULT_TIMEDEPTH"
 _DEFAULT_TIMEDEPTH = 3  # xxxx_xx_xx_ (daily)
+
+
+def utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 ###
@@ -232,14 +238,12 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
 
 
 class TimeseriesRecord(DjelmeRecordtype):
-    timestamp: datetime.datetime = esdsl.mapped_field(
-        default_factory=lambda: django.utils.timezone.now()
-    )
+    timestamp: datetime.datetime = esdsl.mapped_field(default_factory=lambda: utcnow())
     # the 'version' field type allows range queries on semver-like strings
     # that fit perfectly with "timeparts" representation of a UTC datetime
     # as a sequence of integers -- helps to avoid time zones and date math
     # (e.g. '2000' < '2000.5.10' < '2000.5.20.20.20' < '2000.11' < '2001')
-    timestamp_parts: str = esdsl.mapped_field(esdsl.Version(), default="")
+    timeseries_timeparts: str = esdsl.mapped_field(esdsl.Version(), default="")
 
     class Meta:
         abstract = True
@@ -268,16 +272,16 @@ class TimeseriesRecord(DjelmeRecordtype):
     def search_timeseries_range(
         cls,
         from_when: tuple[int, ...] | datetime.date,
-        until_when: tuple[int, ...] | datetime.date,
+        until_when: tuple[int, ...] | datetime.date | None,
         **kwargs: typing.Any,
     ) -> typing.Any:
         _index_pattern = cls.format_timeseries_index_pattern_for_range(
             from_when, until_when
         )
         _timestamp_q = esdsl.query.Range(
-            timestamp_parts={
-                "gte": timeseries_naming.full_semverlike_timeparts(from_when),
-                "lt": timeseries_naming.full_semverlike_timeparts(until_when),
+            timeseries_timeparts={
+                "gte": format_full_timeparts(from_when),
+                "lt": format_full_timeparts(until_when),
             }
         )
         return cls.search(index=_index_pattern).filter(_timestamp_q)
@@ -313,18 +317,6 @@ class TimeseriesRecord(DjelmeRecordtype):
             pass
 
     @classmethod
-    def format_timeseries_index_name(
-        cls, timestamp: datetime.date | None = None
-    ) -> str:
-        _index_name = timeseries_naming.format_index_name_for_date(
-            timestamp or django.utils.timezone.now(),
-            app_label=cls.app_label,
-            recordtype=cls.get_timeseries_recordtype_name(),
-            timedepth=cls.get_timedepth(),
-        )
-        return "".join((cls.get_timeseries_name_prefix(), _index_name))
-
-    @classmethod
     def get_timeseries_template(cls) -> esdsl.ComposableIndexTemplate:
         return cls._index.as_composable_template(
             template_name=cls.get_timeseries_template_name(),
@@ -336,7 +328,7 @@ class TimeseriesRecord(DjelmeRecordtype):
         _template_name = timeseries_naming.format_template_name(
             cls.app_label, cls.get_timeseries_recordtype_name()
         )
-        return "".join(cls.get_timeseries_name_prefix(), _template_name)
+        return "".join((cls.get_timeseries_name_prefix(), _template_name))
 
     @classmethod
     def get_timeseries_recordtype_name(cls) -> str:
@@ -397,6 +389,7 @@ class TimeseriesRecord(DjelmeRecordtype):
     @classmethod
     def sync_index_template(cls, using=None):  # -> ComposableIndexTemplate:
         """Sync the index template for this metric in Elasticsearch."""
+        assert not cls.is_abstract
         _template = cls.get_timeseries_template()
         signals.pre_index_template_create.send(
             cls, index_template=_template, using=using
@@ -470,21 +463,28 @@ class TimeseriesRecord(DjelmeRecordtype):
     # instance methods
 
     def __init__(self, *args, **kwargs):
+        assert not self.__class__.is_abstract
         super().__init__(*args, **kwargs)
-        self.timestamp_parts = self._build_timestamp_parts()
+        self.timeseries_timeparts = self._get_timeseries_timeparts()
 
-    @property
-    def _timeseries_timestamp(self) -> datetime.datetime:
-        """the datetime used to choose a timeseries index"""
-        return self.timestamp
-
-    def _build_timestamp_parts(self) -> str:
-        return timeseries_naming.full_semverlike_timeparts(self._timeseries_timestamp)
+    def _get_timeseries_timeparts(self) -> str:
+        """semverlike string of timeparts, used to choose a timeseries index"""
+        return format_full_timeparts(self.timestamp)
 
     def djelme_index_name(self) -> str:
-        _when = self._timeseries_timestamp
+        """the index name for this record instance
+
+        for ProtoDjelmeRecord
+        """
+        _when = self._get_timeseries_timeparts()
         assert _when is not None
-        return self.format_timeseries_index_name(_when)
+        _index_name = timeseries_naming.format_index_name(
+            app_label=self.__class__.app_label,
+            recordtype=self.get_timeseries_recordtype_name(),
+            timeparts=_when,
+            max_timedepth=self.get_timedepth(),
+        )
+        return "".join((self.get_timeseries_name_prefix(), _index_name))
 
     def save(
         self,
@@ -495,9 +495,9 @@ class TimeseriesRecord(DjelmeRecordtype):
         return_doc_meta: bool = False,
         **kwargs: typing.Any,
     ) -> typing.Any:
-        """save the record
+        """save the record to a timeseries index
 
-        overrides `save` to choose a timeseries index based on `self._timeseries_timestamp`
+        overrides `Document.save` to choose a specific timeseries index
         """
         if index is None:
             index = self.djelme_index_name()
@@ -569,24 +569,30 @@ class CountedUsageRecord(EventRecord):
 
 
 class CyclicRecord(TimeseriesRecord):
-    """CyclicRecord: for recording a measurement on a periodic basis"""
+    """CyclicRecord: for recording something on a regular cycle"""
 
-    covers_from: datetime.datetime  # type: ignore[misc]
-    covers_before: datetime.datetime  # type: ignore[misc]
+    CYCLE_TIMEDEPTH: typing.ClassVar[int]
+
+    cycle_timeparts: str = esdsl.mapped_field(esdsl.Version(), default="")
 
     class Meta:
         abstract = True
 
-    def __init_subclass__(cls, *, cycle_timedepth: int, **kwargs) -> None:
+    def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
+        if not cls.is_abstract:
+            _cycle_timedepth = getattr(cls, "CYCLE_TIMEDEPTH", None)
+            if not isinstance(_cycle_timedepth, int):
+                raise ImproperlyConfigured(
+                    f"expected CYCLE_TIMEDEPTH integer on {cls.__module__}.{cls.__qualname__}"
+                )
 
-    @property
-    def _timeseries_timestamp(self) -> datetime.datetime:
+    def _get_timeseries_timeparts(self) -> str:
         """the datetime used to choose a timeseries index
 
         overrides TimeseriesRecord to index by the start of the covered timespan
         """
-        return self.covers_from
+        return self.cycle_timeparts
 
 
 @dataclasses.dataclass
@@ -595,7 +601,6 @@ class DjelmeElastic8Backend:
 
     backend_name: str
     imp_kwargs: dict[str, str]  # pass-thru to elasticsearch connection kwargs
-    namespace_prefix: str = ""
 
     def djelme_backend_name(self) -> str:  # for ProtoDjelmeBackend
         return self.backend_name

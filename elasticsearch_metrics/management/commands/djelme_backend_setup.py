@@ -18,27 +18,27 @@ class Command(BaseCommand):
         style = color_style()
         _given_app_label: str | None = options["app_label"]
         _app_labels: list[str]
-        if _given_app_label:
-            if _given_app_label not in djelme_registry.all_recordtypes:
-                raise CommandError(f"No recordtypes found for app {_given_app_label!r}")
-            _app_labels = [_given_app_label]
-        else:
-            _app_labels = list(djelme_registry.all_recordtypes.keys())
+        _app_labels = (
+            [_given_app_label]
+            if _given_app_label
+            else list(djelme_registry.each_app_label())
+        )
         for _app_label in _app_labels:
             self.stdout.write(
                 "Syncing recordtypes for app: '{}'".format(_app_label),
                 style.MIGRATE_HEADING,
             )
-            for (
-                _backend_name,
-                _each_recordtype,
-            ) in djelme_registry.each_recordtype_by_backend(_app_label):
-                _backend = djelme_registry.get_backend(_backend_name)
-                self.stdout.write(
-                    f"  Using backend {_backend.djelme_backend_name()!r}..."
+            try:
+                _types_by_backend = djelme_registry.recordtypes_by_backend(
+                    app_label=_app_label
                 )
-                for _recordtype in _each_recordtype:
-                    self.stdout.write(f"  Setting up {_recordtype!r}...")
+            except LookupError as _err:
+                raise CommandError(
+                    f"No recordtypes found for app {options["app_label"]!r}"
+                ) from _err
+            for _backend_name, _each_recordtype in _types_by_backend.items():
+                _backend = djelme_registry.get_backend(_backend_name)
+                self.stdout.write(f"  Using backend {_backend_name!r}...")
                 _backend.djelme_setup(_each_recordtype)
 
         self.stdout.write("Synchronized recordtypes.", style.SUCCESS)
