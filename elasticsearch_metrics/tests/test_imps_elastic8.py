@@ -55,7 +55,7 @@ class TestNamesAndPatterns(SimpleDjelmeTestCase):
         )
         _thingreport = ThingHappeningsReport(
             timestamp=_stamp,
-            cycle_timeparts="1999.3.15",
+            cycle_coverage="1999.3.15",
             thing_id="wo",
             happen_count=2,
         )
@@ -86,7 +86,7 @@ class TestNamesAndPatterns(SimpleDjelmeTestCase):
             )
             _thingreport = ThingHappeningsReport(
                 timestamp=_stamp,
-                cycle_timeparts="1999.3.16",
+                cycle_coverage="1999.3.16",
                 thing_id="wha",
                 happen_count=0,
             )

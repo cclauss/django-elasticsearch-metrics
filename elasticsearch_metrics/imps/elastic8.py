@@ -12,9 +12,12 @@
 """
 
 __all__ = (
-    "TimeseriesRecord",
     "EventRecord",
+    "CountedUsageRecord",
     "CyclicRecord",
+    # for ProtoDjelmeImp:
+    "djelme_backend",
+    "djelme_when_ready",
 )
 import collections
 import dataclasses
@@ -39,7 +42,7 @@ from elasticsearch_metrics.protocols import (
     ProtoDjelmeRecord,
 )
 from elasticsearch_metrics.util import timeseries_naming
-from elasticsearch_metrics.util.timeparts import format_full_timeparts
+from elasticsearch_metrics.util.timeparts import format_full_timeparts, format_timeparts
 from elasticsearch_metrics.util.unique_together import get_unique_id
 from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
 
@@ -220,7 +223,7 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
         assert _unique_id or not self.UNIQUE_TOGETHER_FIELDS
         self.unique_id = _unique_id or ""
         # make it unique by setting doc id in elasticsearch
-        if _unique_id and not self.meta.id:
+        if _unique_id:
             self.meta.id = _unique_id
 
     def _get_unique_id(self) -> str | None:
@@ -238,12 +241,11 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
 
 
 class TimeseriesRecord(DjelmeRecordtype):
-    timestamp: datetime.datetime = esdsl.mapped_field(default_factory=lambda: utcnow())
     # the 'version' field type allows range queries on semver-like strings
     # that fit perfectly with "timeparts" representation of a UTC datetime
     # as a sequence of integers -- helps to avoid time zones and date math
     # (e.g. '2000' < '2000.5.10' < '2000.5.20.20.20' < '2000.11' < '2001')
-    timeseries_timeparts: str = esdsl.mapped_field(esdsl.Version(), default="")
+    timeseries_timeparts: str = esdsl.mapped_field(esdsl.Version())
 
     class Meta:
         abstract = True
@@ -262,10 +264,16 @@ class TimeseriesRecord(DjelmeRecordtype):
         cls.sync_index_template(using=using)
 
     @classmethod
-    def search(cls, *, index=None, **kwargs):
+    def search(
+        cls,
+        using: str | Elastic8Client | None = None,
+        index: str | None = None,
+    ) -> esdsl.Search[
+        "typing.Self"
+    ]:  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
         return super().search(
+            using=using,
             index=(index or cls.format_timeseries_index_pattern()),
-            **kwargs,
         )
 
     @classmethod
@@ -278,13 +286,13 @@ class TimeseriesRecord(DjelmeRecordtype):
         _index_pattern = cls.format_timeseries_index_pattern_for_range(
             from_when, until_when
         )
-        _timestamp_q = esdsl.query.Range(
+        _timeseries_q = esdsl.query.Range(
             timeseries_timeparts={
                 "gte": format_full_timeparts(from_when),
                 "lt": format_full_timeparts(until_when),
             }
         )
-        return cls.search(index=_index_pattern).filter(_timestamp_q)
+        return cls.search(index=_index_pattern).filter(_timeseries_q)
 
     @classmethod
     def refresh_timeseries_indexes(cls, using: str | None = None) -> None:
@@ -465,23 +473,24 @@ class TimeseriesRecord(DjelmeRecordtype):
     def __init__(self, *args, **kwargs):
         assert not self.__class__.is_abstract
         super().__init__(*args, **kwargs)
-        self.timeseries_timeparts = self._get_timeseries_timeparts()
+        self.timeseries_timeparts = self.get_timeseries_timeparts()
 
-    def _get_timeseries_timeparts(self) -> str:
+    def get_timeseries_timeparts(self) -> str:
         """semverlike string of timeparts, used to choose a timeseries index"""
-        return format_full_timeparts(self.timestamp)
+        raise NotImplementedError(
+            f"{self.__class__!r} must implement get_timeseries_timeparts"
+        )
 
     def djelme_index_name(self) -> str:
         """the index name for this record instance
 
         for ProtoDjelmeRecord
         """
-        _when = self._get_timeseries_timeparts()
-        assert _when is not None
+        assert self.timeseries_timeparts
         _index_name = timeseries_naming.format_index_name(
             app_label=self.__class__.app_label,
             recordtype=self.get_timeseries_recordtype_name(),
-            timeparts=_when,
+            timeparts=self.timeseries_timeparts,
             max_timedepth=self.get_timedepth(),
         )
         return "".join((self.get_timeseries_name_prefix(), _index_name))
@@ -508,9 +517,17 @@ class TimeseriesRecord(DjelmeRecordtype):
 # TODO: EventRecord expiration
 # class EventRecord(TimeseriesRecord, ProtoExpirableRecord?):
 class EventRecord(TimeseriesRecord):
+    timestamp: datetime.datetime = esdsl.mapped_field(default_factory=lambda: utcnow())
 
     class Meta:
         abstract = True
+
+    def get_timeseries_timeparts(self) -> str:
+        """semverlike string of timeparts, used to choose a timeseries index
+
+        for TimeseriesRecord
+        """
+        return format_full_timeparts(self.timestamp)
 
 
 # class CountedUsageRecord(EventRecord, ProtoCountedUsage):
@@ -571,9 +588,14 @@ class CountedUsageRecord(EventRecord):
 class CyclicRecord(TimeseriesRecord):
     """CyclicRecord: for recording something on a regular cycle"""
 
-    CYCLE_TIMEDEPTH: typing.ClassVar[int]
+    UNIQUE_TOGETHER_FIELDS: typing.ClassVar[collections.abc.Iterable[str]] = (
+        "cycle_coverage",
+    )
 
-    cycle_timeparts: str = esdsl.mapped_field(esdsl.Version(), default="")
+    CYCLE_TIMEDEPTH: typing.ClassVar[int]  # required on subclasses
+
+    cycle_coverage: str = esdsl.mapped_field(esdsl.Version())
+    created: datetime.datetime = esdsl.mapped_field(default_factory=lambda: utcnow())
 
     class Meta:
         abstract = True
@@ -586,13 +608,19 @@ class CyclicRecord(TimeseriesRecord):
                 raise ImproperlyConfigured(
                     f"expected CYCLE_TIMEDEPTH integer on {cls.__module__}.{cls.__qualname__}"
                 )
+            if "cycle_coverage" not in cls.UNIQUE_TOGETHER_FIELDS:
+                raise ImproperlyConfigured(
+                    f'CyclicRecord subclasses must have "cycle_coverage" in UNIQUE_TOGETHER_FIELDS ({cls!r})'
+                )
 
-    def _get_timeseries_timeparts(self) -> str:
-        """the datetime used to choose a timeseries index
+    def get_timeseries_timeparts(self) -> str:
+        """semverlike string of timeparts, used to choose a timeseries index
 
-        overrides TimeseriesRecord to index by the start of the covered timespan
+        for TimeseriesRecord
+
+        use `cycle_coverage`; index by the start of the covered timespan
         """
-        return self.cycle_timeparts
+        return format_timeparts(self.cycle_coverage, self.CYCLE_TIMEDEPTH)
 
 
 @dataclasses.dataclass

@@ -46,14 +46,13 @@ def _zeropadded_timeparts(
 
 
 def get_timeparts(
-    when: tuple[int, ...] | datetime.date,
+    when: tuple[int, ...] | datetime.date | str,
     timedepth: int,
 ) -> tuple[int, ...]:
-    return (
-        timeparts_from_date(when, timedepth)
-        if isinstance(when, datetime.date)
-        else tuple(itertools.islice(_zeropadded_timeparts(when), timedepth))
-    )
+    if isinstance(when, datetime.date):
+        return timeparts_from_date(when, timedepth)
+    _each_part = parse_timeparts(when) if isinstance(when, str) else when
+    return tuple(itertools.islice(_zeropadded_timeparts(_each_part), timedepth))
 
 
 def format_full_timeparts(when: tuple[int, ...] | datetime.date) -> str:
@@ -75,7 +74,9 @@ def format_full_timeparts(when: tuple[int, ...] | datetime.date) -> str:
     return TIMEPART_DELIMITER.join(map(str, _parts))
 
 
-def format_timeparts(when: tuple[int, ...] | datetime.date, timedepth: int) -> str:
+def format_timeparts(
+    when: tuple[int, ...] | datetime.date | str, timedepth: int
+) -> str:
     """
     >>> format_timeparts(datetime.date(3000, 7, 12), timedepth=3)
     '3000.7.12'
@@ -115,5 +116,9 @@ if __debug__:
 '3000.9.1.5.2.0'
 >>> format_timeparts(datetime.datetime(3000, 9, 1, 5, 2), timedepth=3)
 '3000.9.1'
+>>> format_timeparts('3000.2.7.9', timedepth=3)
+'3000.2.7'
+>>> format_timeparts('3000.2.7.9', timedepth=5)
+'3000.2.7.9.0'
 """,
     }
