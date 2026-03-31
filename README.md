@@ -105,13 +105,13 @@ in which a record is saved (using UTC timezone). You can change this for a recor
 ```python
 class MyEventWithMonthlyIndexes(EventRecord):
     class Meta:
-        timedepth = 2  # YYYY_MM
+        timedepth = 2  # year and month
 ```
 
-- index per year, '...YYYY...': `timedepth = 1`
-- index per month, '...YYYY_MM...': `timedepth = 2`
-- index per day, '...YYYY_MM_DD...': `timedepth = 3` (default)
-- index per hour, '...YYYY_MM_DD_HH...': `timedepth = 4`
+- index per year: `timedepth = 1`
+- index per month: `timedepth = 2`
+- index per day: `timedepth = 3` (default)
+- index per hour: `timedepth = 4`
 
 
 ## Index settings
@@ -173,27 +173,6 @@ class UsageRecord(MyBaseMetric):
         app_label = "myapp"
 ```
 
-## Optional factory_boy integration
-
-```python
-import factory
-from elasticsearch_metrics.factory import MetricFactory
-
-from ..myapp.metrics import MyMetric
-
-
-class MyMetricFactory(MetricFactory):
-    my_int = factory.Faker("pyint")
-
-    class Meta:
-        model = MyMetric
-
-
-def test_something():
-    metric = MyMetricFactory()  # index metric in ES
-    assert isinstance(metric.my_int, int)
-```
-
 ## Configuration
 
 * `DJELME_BACKENDS`: Named backends for storing or searching records from your django app
@@ -220,9 +199,9 @@ def test_something():
 * `DJELME_DEFAULT_TIMEDEPTH`: Set the granularity of timeseries indexes by the number of "time parts" in index names
     ```
     DJELME_DEFAULT_TIMEDEPTH = 1  # yearly indexes; YYYY
-    DJELME_DEFAULT_TIMEDEPTH = 2  # monthly indexes; YYYY_MM
-    DJELME_DEFAULT_TIMEDEPTH = 3  # daily indexes; YYYY_MM_DD (this is the default)
-    DJELME_DEFAULT_TIMEDEPTH = 4  # hourly indexes; YYYY_MM_DD_HH
+    DJELME_DEFAULT_TIMEDEPTH = 2  # monthly indexes; YYYY.MM
+    DJELME_DEFAULT_TIMEDEPTH = 3  # daily indexes; YYYY.MM.DD (this is the default)
+    DJELME_DEFAULT_TIMEDEPTH = 4  # hourly indexes; YYYY.MM.DD.HH
     ```
     you can also set `Meta.timedepth` on a specific record type; this will take precedence
 

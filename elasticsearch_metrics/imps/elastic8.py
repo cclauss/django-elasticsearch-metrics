@@ -366,13 +366,13 @@ class TimeseriesRecord(DjelmeRecordtype):
     def format_timeseries_index_pattern_for_range(
         cls,
         from_when: tuple[int, ...] | datetime.date,
-        until_when: tuple[int, ...] | datetime.date,
+        until_when: tuple[int, ...] | datetime.date | None,
     ) -> str:
         _pattern = timeseries_naming.format_index_pattern_for_range(
             cls.app_label,
             cls.get_timeseries_recordtype_name(),
             from_when,
-            until_when,
+            until_when or utcnow(),
             timedepth=cls.get_timedepth(),
         )
         return "".join((cls.get_timeseries_name_prefix(), _pattern))
