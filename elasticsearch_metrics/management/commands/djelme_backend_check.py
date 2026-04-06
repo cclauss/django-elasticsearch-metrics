@@ -1,6 +1,6 @@
 import sys
 import logging
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 
 from django.utils.termcolors import colorize
 
@@ -19,19 +19,16 @@ class Command(BaseCommand):
         # Avoid elasticsearch requests from getting logged
         logging.getLogger("elasticsearch").setLevel(logging.CRITICAL)
         style = color_style()
-        if options["app_label"]:
-            if options["app_label"] not in djelme_registry.all_recordtypes:
-                raise CommandError(
-                    "No recordtypes found for app '{}'".format(options["app_label"])
-                )
-            app_labels = [options["app_label"]]
-        else:
-            app_labels = list(djelme_registry.each_app_label())
+        _app_labels = (
+            [options["app_label"]]
+            if options["app_label"]
+            else list(djelme_registry.each_app_label())
+        )
 
         out_of_sync_count = 0
         self.stdout.write("Checking for outdated index templates...")
-        for app_label in app_labels:
-            for _recordtype in djelme_registry.each_recordtype(app_label=app_label):
+        for _app_label in _app_labels:
+            for _recordtype in djelme_registry.each_recordtype(app_label=_app_label):
                 try:
                     _recordtype.check_djelme_setup()
                 except (

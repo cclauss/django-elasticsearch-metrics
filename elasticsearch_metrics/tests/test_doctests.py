@@ -5,6 +5,7 @@ _MODULES_WITH_DOCTESTS = (
     "elasticsearch_metrics.imps.elastic8",
     "elasticsearch_metrics.util.anon_enough",
     "elasticsearch_metrics.util.timeseries_naming",
+    "elasticsearch_metrics.util.timeparts",
 )
 
 

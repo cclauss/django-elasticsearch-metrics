@@ -6,8 +6,8 @@ Django app for storing time-series metrics in Elasticsearch.
 
 python importables:
 - `elasticsearch_metrics`
-- `elasticsearch_metrics.imps.elastic8`
-- `elasticsearch_metrics.imps.elastic6`
+- `elasticsearch_metrics.imps.elastic8` (an implementation with elasticsearch 8)
+- `elasticsearch_metrics.imps.elastic6` (an implementation with elasticsearch 6; deprecated)
 - ...
 
 ## Pre-requisites
@@ -58,7 +58,7 @@ class UsageRecord(EventRecord):
     item_id: int
 
     class Index:
-        using = "my-es8-backend"  # optional if only one backend
+        using = "my-es8-backend"  # backend name -- required if multiple backends use the same imp
 ```
 
 Either enable autosetup...
@@ -98,19 +98,26 @@ UsageRecord.search_timeseries_range(datetime.date(2030, 1, 1), datetime.date(203
 
 ## Timeseries indexes
 
-By default, behind the scenes, a new elasticsearch index is created for each record type for each month
-in which a record is saved (using UTC timezone). You can set a default change the per-index timespan by
-setting `Meta.timedepth` on the record type.
+By default, behind the scenes, a new elasticsearch index is created for each record type for each day
+in which a record is saved (using UTC timezone). You can change this for a record type by setting
+`Meta.timedepth`, or change the default timedepth with the setting `DJELME_DEFAULT_TIMEDEPTH` (see below).
 
-- index per day, '...YYYY_MM_DD...': `timedepth = 3`
-- index per month, '...YYYY_MM...': `timedepth = 2`
-- index per year, '...YYYY...': `timedepth = 1`
+```python
+class MyEventWithMonthlyIndexes(EventRecord):
+    class Meta:
+        timedepth = 2  # year and month
+```
+
+- index per year: `timedepth = 1`
+- index per month: `timedepth = 2`
+- index per day: `timedepth = 3` (default)
+- index per hour: `timedepth = 4`
 
 
 ## Index settings
 
-You can configure the index template settings by setting
-`Index.settings` on a record type.
+You can configure the index settings that will be set on the index template
+and used for each new timeseries index with `Index.settings` on a record type.
 
 ```python
 class UsageRecord(EventRecord):
@@ -166,27 +173,6 @@ class UsageRecord(MyBaseMetric):
         app_label = "myapp"
 ```
 
-## Optional factory_boy integration
-
-```python
-import factory
-from elasticsearch_metrics.factory import MetricFactory
-
-from ..myapp.metrics import MyMetric
-
-
-class MyMetricFactory(MetricFactory):
-    my_int = factory.Faker("pyint")
-
-    class Meta:
-        model = MyMetric
-
-
-def test_something():
-    metric = MyMetricFactory()  # index metric in ES
-    assert isinstance(metric.my_int, int)
-```
-
 ## Configuration
 
 * `DJELME_BACKENDS`: Named backends for storing or searching records from your django app
@@ -213,9 +199,9 @@ def test_something():
 * `DJELME_DEFAULT_TIMEDEPTH`: Set the granularity of timeseries indexes by the number of "time parts" in index names
     ```
     DJELME_DEFAULT_TIMEDEPTH = 1  # yearly indexes; YYYY
-    DJELME_DEFAULT_TIMEDEPTH = 2  # monthly indexes; YYYY_MM
-    DJELME_DEFAULT_TIMEDEPTH = 3  # daily indexes; YYYY_MM_DD (this is the default)
-    DJELME_DEFAULT_TIMEDEPTH = 4  # hourly indexes; YYYY_MM_DD_HH
+    DJELME_DEFAULT_TIMEDEPTH = 2  # monthly indexes; YYYY.MM
+    DJELME_DEFAULT_TIMEDEPTH = 3  # daily indexes; YYYY.MM.DD (this is the default)
+    DJELME_DEFAULT_TIMEDEPTH = 4  # hourly indexes; YYYY.MM.DD.HH
     ```
     you can also set `Meta.timedepth` on a specific record type; this will take precedence
 

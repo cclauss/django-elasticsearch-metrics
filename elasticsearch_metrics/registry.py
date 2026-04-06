@@ -2,6 +2,7 @@ import collections
 import dataclasses
 import functools
 import importlib
+import typing
 import weakref
 
 from django.apps import apps
@@ -14,6 +15,7 @@ from elasticsearch_metrics.protocols import (
     ProtoDjelmeImp,
 )
 from elasticsearch_metrics.util.django import find_app_label_for_type
+from elasticsearch_metrics.util.timeseries_naming import format_namepart
 
 __all__ = ("djelme_registry",)
 
@@ -35,7 +37,7 @@ class _DjelmeRegistry:
 
     # nested mapping from app labels => record-type names => record classes
     # (using weakref so if the class is destroyed, no longer registered)
-    all_recordtypes: collections.abc.MutableMapping[
+    _all_recordtypes: collections.abc.MutableMapping[
         str, collections.abc.MutableMapping[str, type[ProtoDjelmeRecord]]
     ] = dataclasses.field(
         default_factory=lambda: collections.defaultdict(
@@ -72,8 +74,8 @@ class _DjelmeRegistry:
     ) -> None:
         """Add a record type to the registry."""
         _app_label = app_label or find_app_label_for_type(recordtype)
-        app_recordtypes = self.all_recordtypes[_app_label]
-        recordtype_name = recordtype.__name__.lower()
+        app_recordtypes = self._all_recordtypes[_app_label]
+        recordtype_name = format_namepart(recordtype.__name__)
         if recordtype_name in app_recordtypes:
             # Raise an error for conflicting recordtype names (same behavior as apps.register_model)
             raise RuntimeError(
@@ -112,7 +114,7 @@ class _DjelmeRegistry:
 
         app_recordtypes = self._get_recordtypes_for_app(app_label)
         try:
-            return app_recordtypes[recordtype_name.lower()]
+            return app_recordtypes[format_namepart(recordtype_name)]
         except KeyError as e:
             raise LookupError(
                 "App '{}' doesn't have a '{}' metric.".format(
@@ -123,16 +125,14 @@ class _DjelmeRegistry:
     def get_recordtype_app_label(self, recordtype: type) -> str | None:
         _each_matching_app_label = (
             _app_label
-            for _app_label, _types in self.all_recordtypes.items()
-            if _types.get(recordtype.__name__.lower()) is recordtype
+            for _app_label, _types in self._all_recordtypes.items()
+            if _types.get(format_namepart(recordtype.__name__)) is recordtype
         )
         return next(_each_matching_app_label, None)
 
-    def get_backend(
-        self, backend_name: str, namespace_prefix: str = ""
-    ) -> ProtoDjelmeBackend:
+    def get_backend(self, backend_name: str) -> ProtoDjelmeBackend:
         _imp_module, _imp_kwargs = self._lookup_imp_module(backend_name)
-        return _imp_module.djelme_backend(backend_name, _imp_kwargs, namespace_prefix)
+        return _imp_module.djelme_backend(backend_name, _imp_kwargs)
 
     def get_imp_module(
         self, imp_module_name: str = "", *, backend_name: str = ""
@@ -181,12 +181,14 @@ class _DjelmeRegistry:
     ) -> collections.abc.Iterator[type[ProtoDjelmeRecord]]:
         """Iterate registered metric classes, optionally filtered on an app_label"""
         apps.check_apps_ready()  # ensure django setup done
-        _app_labels = [app_label] if app_label else self.all_recordtypes.keys()
+        _app_labels = [app_label] if app_label else self._all_recordtypes.keys()
         for _app_label in _app_labels:
             for _recordtype in self._get_recordtypes_for_app(_app_label).values():
                 yield _recordtype
 
-    def each_backend_settings(self) -> collections.abc.Iterator[tuple[str, str, dict]]:
+    def each_backend_settings(
+        self,
+    ) -> collections.abc.Iterator[tuple[str, str, dict[str, typing.Any]]]:
         for _backend_name, _imp_config in self.all_backends.items():
             if _imp_config:
                 _imp_module_name, _imp_kwargs = next(iter(_imp_config.items()))
@@ -210,23 +212,21 @@ class _DjelmeRegistry:
             yield self.get_backend(_backend_name)
 
     def each_app_label(self) -> collections.abc.Iterable[str]:
-        yield from self.all_recordtypes.keys()
+        yield from self._all_recordtypes.keys()
 
-    def each_recordtype_by_backend(
+    def recordtypes_by_backend(
         self, app_label: str = ""
-    ) -> collections.abc.Iterator[
-        tuple[str, collections.abc.Iterable[type[ProtoDjelmeRecord]]]
-    ]:
+    ) -> dict[str, collections.abc.Iterable[type[ProtoDjelmeRecord]]]:
         apps.check_apps_ready()  # ensure django setup done
         _by_backend_name: dict[str, list[type[ProtoDjelmeRecord]]] = (
             collections.defaultdict(list)
         )
-        _app_labels = [app_label] if app_label else self.all_recordtypes.keys()
+        _app_labels = [app_label] if app_label else self._all_recordtypes.keys()
         for _app_label in _app_labels:
-            for _recordtype in self.all_recordtypes[_app_label].values():
+            for _recordtype in self._get_recordtypes_for_app(_app_label).values():
                 _backend_name = self.get_backend_name_for_recordtype(_recordtype)
                 _by_backend_name[_backend_name].append(_recordtype)
-        yield from _by_backend_name.items()
+        return dict(_by_backend_name.items())
 
     ###
     # private methods
@@ -249,11 +249,11 @@ class _DjelmeRegistry:
     def _get_recordtypes_for_app(
         self, app_label: str
     ) -> collections.abc.Mapping[str, type]:
-        if app_label not in self.all_recordtypes:
+        if app_label not in self._all_recordtypes:
             raise LookupError(
                 "No recordtypes found in app with label '{}'.".format(app_label)
             )
-        return self.all_recordtypes[app_label]
+        return self._all_recordtypes[app_label]
 
 
 def _import_imp_module(imp_module_name: str) -> ProtoDjelmeImp:

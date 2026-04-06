@@ -12,18 +12,6 @@ class MetricWithAppLabel(elastic6.Metric):
 
 
 class TestTimeseriesTypeRegistry(SimpleTestCase):
-    def test_recordtype_in_app_is_in_registry(self):
-        assert "dummy6app" in djelme_registry.all_recordtypes
-        assert (
-            djelme_registry.all_recordtypes["dummy6app"]["dummy6metric"] is Dummy6Metric
-        )
-
-    def test_recordtype_with_explicit_label_set_is_in_registry(self):
-        assert (
-            djelme_registry.all_recordtypes["dummy6app"]["metricwithapplabel"]
-            is MetricWithAppLabel
-        )
-
     def test_conflicting_recordtype(self):
         with self.assertRaises(RuntimeError):
 
