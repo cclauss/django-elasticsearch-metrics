@@ -296,20 +296,20 @@ class TestIntegrationSetup(RealElasticTestCase, autosetup_djelme_backends=False)
 
     def test_check_djelme_setup(self):
         with self.assertRaises(IndexTemplateNotFoundError):
-            assert PreprintView.check_djelme_setup() is False
+            PreprintView.check_djelme_setup()
         PreprintView.sync_index_template()
-        assert PreprintView.check_djelme_setup() is True
+        assert PreprintView.check_djelme_setup() is None
 
         # When settings change, template is out of sync
         PreprintView._index.settings(
             **{"refresh_interval": "1s", "number_of_shards": 1, "number_of_replicas": 2}
         )
         with self.assertRaises(IndexTemplateOutOfSyncError) as excinfo:
-            assert PreprintView.check_djelme_setup() is False
+            PreprintView.check_djelme_setup()
         error = excinfo.exception
         assert error.settings_in_sync is False
         assert error.mappings_in_sync is True
         assert error.patterns_in_sync is True
 
         PreprintView.sync_index_template()
-        assert PreprintView.check_djelme_setup() is True
+        assert PreprintView.check_djelme_setup() is None

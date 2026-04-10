@@ -1,7 +1,8 @@
+import contextlib
 from io import StringIO
-from unittest import mock
 import types
 import typing
+from unittest import mock
 import uuid
 
 from django.core.management import call_command
@@ -13,6 +14,10 @@ from elasticsearch_metrics.registry import djelme_registry
 
 class SimpleDjelmeTestCase(SimpleTestCase):
     """SimpleDjelmeTestCase: base test case with djelme-specific conveniences"""
+
+    def setUp(self):
+        super().setUp()
+        clear_setup_check_caches()
 
     def enterContext(self, context_manager):
         # unittest.TestCase.enterContext added in python3.11 -- implementing here until 3.10 eol
@@ -52,46 +57,68 @@ class RealElasticTestCase(SimpleDjelmeTestCase):
         cls.__autoteardown_backends = autoteardown_djelme_backends
 
     def setUp(self):
+        self.enterContext(prefixed_index_names())
         super().setUp()
-        _name_prefix = f"{uuid.uuid4().hex}_"
-        self.enterContext(
-            mock.patch(
-                "elasticsearch_metrics.imps.elastic8.TimeseriesRecord.get_timeseries_name_prefix",
-                return_value=_name_prefix,
-            )
-        )
-        self.enterContext(
-            mock.patch(
-                "elasticsearch_metrics.imps.elastic6.BaseMetric.get_timeseries_name_prefix",
-                return_value=_name_prefix,
-            ),
-        )
         if self.__autosetup_backends:
-            self.setup_backends()
+            setup_backends()
 
     def tearDown(self):
         if self.__autoteardown_backends:
-            self.teardown_backends()
+            teardown_backends()
         super().tearDown()
-
-    def setup_backends(self):
-        # backends based on settings in django.conf.settings.DJELME_BACKENDS
-        _types_by_backend = djelme_registry.recordtypes_by_backend()
-        for _backend_name, _recordtypes in _types_by_backend.items():
-            djelme_registry.get_backend(_backend_name).djelme_setup(_recordtypes)
-
-    def teardown_backends(self):
-        # backends based on settings in django.conf.settings.DJELME_BACKENDS
-        _types_by_backend = djelme_registry.recordtypes_by_backend()
-        for _backend_name, _recordtypes in _types_by_backend.items():
-            djelme_registry.get_backend(_backend_name).djelme_teardown(_recordtypes)
 
 
 class MockSaveTestCase(SimpleDjelmeTestCase):
     def setUp(self):
+        super().setUp()
         self.mocked_es6_save = self.enterContext(
             mock.patch("elasticsearch_metrics.imps.elastic6.Document.save"),
         )
         self.mocked_es8_save = self.enterContext(
             mock.patch("elasticsearch_metrics.imps.elastic8.esdsl.Document.save"),
         )
+        self.mocked_es6_require_been_setup = self.enterContext(
+            mock.patch("elasticsearch_metrics.imps.elastic6.Metric.require_been_setup"),
+        )
+        self.mocked_es8_require_been_setup = self.enterContext(
+            mock.patch(
+                "elasticsearch_metrics.imps.elastic8.DjelmeRecordtype.require_been_setup"
+            ),
+        )
+
+
+@contextlib.contextmanager
+def prefixed_index_names(prefix: str = ""):
+    _name_prefix = prefix or f"{uuid.uuid4().hex}_"
+    with (
+        mock.patch(
+            "elasticsearch_metrics.imps.elastic8.TimeseriesRecord.get_timeseries_name_prefix",
+            return_value=_name_prefix,
+        ),
+        mock.patch(
+            "elasticsearch_metrics.imps.elastic6.BaseMetric.get_timeseries_name_prefix",
+            return_value=_name_prefix,
+        ),
+    ):
+        yield
+
+
+def clear_setup_check_caches():
+    from elasticsearch_metrics.imps import elastic6, elastic8
+
+    elastic6.Metric.require_been_setup.cache_clear()
+    elastic8.DjelmeRecordtype.require_been_setup.cache_clear()
+
+
+def setup_backends():
+    # backends based on settings in django.conf.settings.DJELME_BACKENDS
+    _types_by_backend = djelme_registry.recordtypes_by_backend()
+    for _backend_name, _recordtypes in _types_by_backend.items():
+        djelme_registry.get_backend(_backend_name).djelme_setup(_recordtypes)
+
+
+def teardown_backends():
+    # backends based on settings in django.conf.settings.DJELME_BACKENDS
+    _types_by_backend = djelme_registry.recordtypes_by_backend()
+    for _backend_name, _recordtypes in _types_by_backend.items():
+        djelme_registry.get_backend(_backend_name).djelme_teardown(_recordtypes)

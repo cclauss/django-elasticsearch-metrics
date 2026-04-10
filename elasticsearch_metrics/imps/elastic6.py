@@ -8,6 +8,7 @@ import collections
 from collections.abc import Iterator
 import dataclasses
 import datetime
+import functools
 import logging
 
 from django.apps import apps
@@ -188,7 +189,7 @@ class BaseMetric(metaclass=MetricMeta):
         return index_template
 
     @classmethod
-    def check_index_template(cls, using: str | None = None) -> bool:
+    def check_index_template(cls, using: str | None = None) -> None:
         """Check if class is in sync with index template in Elasticsearch.
 
         :raise: IndexTemplateNotFoundError if index template does not exist.
@@ -204,7 +205,7 @@ class BaseMetric(metaclass=MetricMeta):
             template_name = cls._template_name
             metric_name = cls.__name__
             raise exceptions.IndexTemplateNotFoundError(
-                "{template_name} does not exist for {metric_name}".format(**locals()),
+                f"Index template {template_name!r} does not exist for {metric_name}",
                 client_error=client_error,
             ) from client_error
         else:
@@ -241,18 +242,21 @@ class BaseMetric(metaclass=MetricMeta):
                     [key for key, value in word_map.items() if not value]
                 )
                 raise exceptions.IndexTemplateOutOfSyncError(
-                    "{template_name} is out of sync with {metric_name} ({out_of_sync})".format(
-                        **locals()
-                    ),
+                    f"Index template {template_name!r} is out of sync with {metric_name} ({out_of_sync})",
                     mappings_in_sync=mappings_in_sync,
                     patterns_in_sync=patterns_in_sync,
                     settings_in_sync=settings_in_sync,
                 )
-            return True
 
     @classmethod
-    def check_djelme_setup(cls, using: str | None = None) -> bool:
-        return cls.check_index_template(using)
+    def check_djelme_setup(cls, using: str | None = None) -> None:
+        cls.check_index_template(using)
+
+    @classmethod
+    @functools.cache
+    def require_been_setup(cls, using: str | None = None) -> None:
+        """check setup once -- raise on failure, remember success"""
+        cls.check_djelme_setup(using)
 
     @classmethod
     def get_timeseries_index_template(cls):
@@ -302,6 +306,7 @@ class Metric(Document, BaseMetric):
         """Same as `Document.save`, except will save into the index determined
         by the metric's timestamp field.
         """
+        self.require_been_setup(using=using)  # prevent automapped indexes
         self.timestamp = self.timestamp or timezone.now()
         if not index:
             index = self.get_index_name(date=self.timestamp)

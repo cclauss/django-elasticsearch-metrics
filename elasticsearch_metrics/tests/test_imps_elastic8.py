@@ -385,7 +385,44 @@ class TestRealCreate(RealElasticTestCase, autosetup_djelme_backends=True):
         assert properties["happen_code"] == {"type": "keyword"}
 
 
-class TestInit(RealElasticTestCase, autosetup_djelme_backends=False):
+class TestWithoutAutosetup(RealElasticTestCase, autosetup_djelme_backends=False):
+    def test_cannot_save_without_template(self):
+        _event = Dummy8Event(intensity=2)
+        with self.assertRaises(IndexTemplateNotFoundError):
+            _event.save()
+
+    def test_cannot_save_with_wrong_template_pattern(self):
+        with unittest.mock.patch.object(
+            Dummy8Event,
+            "format_timeseries_index_pattern",
+            return_value="wrong_pattern_haha_*",
+        ):
+            Dummy8Event.init()
+        with self.assertRaises(IndexTemplateOutOfSyncError):
+            Dummy8Event.record(intensity=2)
+
+    def test_cannot_save_with_extra_property_mapping(self):
+        # create template with extra property mapping
+        _template = Dummy8Event.get_timeseries_template().to_dict()
+        _template["template"]["mappings"]["properties"]["foo"] = {"type": "keyword"}
+        _es8_client().indices.put_index_template(
+            name=Dummy8Event.get_timeseries_template_name(),
+            **_template,
+        )
+        with self.assertRaises(IndexTemplateOutOfSyncError):
+            Dummy8Event.record(intensity=2)
+
+    def test_cannot_save_with_missing_property_mapping(self):
+        # create template with missing property mapping
+        _template = Dummy8Event.get_timeseries_template().to_dict()
+        del _template["template"]["mappings"]["properties"]["intensity"]
+        _es8_client().indices.put_index_template(
+            name=Dummy8Event.get_timeseries_template_name(),
+            **_template,
+        )
+        with self.assertRaises(IndexTemplateOutOfSyncError):
+            Dummy8Event.record(intensity=2)
+
     def test_init(self):
         ThingHappened.init()
         _client = _es8_client()
@@ -407,23 +444,23 @@ class TestInit(RealElasticTestCase, autosetup_djelme_backends=False):
 
     def test_check_djelme_setup(self):
         with self.assertRaises(IndexTemplateNotFoundError):
-            assert ThingHappened.check_djelme_setup() is False
+            ThingHappened.check_djelme_setup()
         ThingHappened.sync_index_template()
-        assert ThingHappened.check_djelme_setup() is True
+        assert ThingHappened.check_djelme_setup() is None
 
         # When settings change, template is out of sync
         ThingHappened._index.settings(
             **{"refresh_interval": "1s", "number_of_shards": 1, "number_of_replicas": 2}
         )
         with self.assertRaises(IndexTemplateOutOfSyncError) as excinfo:
-            assert ThingHappened.check_djelme_setup() is False
+            ThingHappened.check_djelme_setup()
         error = excinfo.exception
         assert error.settings_in_sync is False
         assert error.mappings_in_sync is True
         assert error.patterns_in_sync is True
 
         ThingHappened.sync_index_template()
-        assert ThingHappened.check_djelme_setup() is True
+        assert ThingHappened.check_djelme_setup() is None
 
 
 class TestDailyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):

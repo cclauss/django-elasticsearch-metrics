@@ -48,7 +48,8 @@ class ProtoDjelmeRecord(typing.Protocol):
         ...
 
     @classmethod
-    def check_djelme_setup(cls, using: str | None = None) -> bool: ...
+    def check_djelme_setup(cls, using: str | None = None) -> None:
+        """Check backend setup for this record type; raise helpful exceptions"""
 
     @classmethod
     def search_timeseries_range(

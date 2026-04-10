@@ -1,9 +1,9 @@
-from elasticsearch8.dsl import Text, mapped_field, analyzer, tokenizer
+from elasticsearch8 import dsl as esdsl
 from elasticsearch_metrics.imps import elastic8 as djelme
 
-dot_path_analyzer = analyzer(
+dot_path_analyzer = esdsl.analyzer(
     "dot_path_analyzer",
-    tokenizer=tokenizer("dot_path_tokenizer", "path_hierarchy", delimiter="."),
+    tokenizer=esdsl.tokenizer("dot_path_tokenizer", "path_hierarchy", delimiter="."),
 )
 
 
@@ -29,8 +29,10 @@ class Monthly8Event(djelme.EventRecord):
 class ThingHappened(djelme.EventRecord):
     thing_id: str = ""
     happen_code: str | None = None
-    dot_path: str | None = mapped_field(Text(analyzer=dot_path_analyzer), default=None)
-    commentary: str | None = mapped_field(Text(), default=None)
+    dot_path: str | None = esdsl.mapped_field(
+        esdsl.Text(analyzer=dot_path_analyzer), default=None
+    )
+    commentary: str | None = esdsl.mapped_field(esdsl.Text(), default=None)
 
     class Index:
         settings = {"refresh_interval": "-1"}

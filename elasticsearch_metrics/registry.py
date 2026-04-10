@@ -162,10 +162,8 @@ class _DjelmeRegistry:
         try:
             (_backend_name,) = _each_backend_name
         except StopIteration as _e:  # no backends
-            breakpoint()
             raise LookupError(f"no backends for recordtype {recordtype!r}") from _e
         except ValueError as _e:  # too many backends
-            breakpoint()
             raise LookupError(
                 f"more than one backend for recordtype {recordtype!r}, must be set explicitly"
             ) from _e

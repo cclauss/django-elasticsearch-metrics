@@ -22,6 +22,7 @@ __all__ = (
 import collections
 import dataclasses
 import datetime
+import functools
 import logging
 import typing
 
@@ -68,14 +69,22 @@ esdsl.document_base.DocumentOptions.type_annotation_map[str] = (esdsl.Keyword, {
 class _DjelmeRecordtypeMetaclass(IndexMeta):
     """Metaclass for the base `DjelmeRecordtype` class.
 
-    overrides behavior in elasticsearch-py's `IndexMeta` to allow
-    additional config in a type's `class Meta`
+    extend elasticsearch-py's `IndexMeta` to:
+    - belong to a django app (identified by `app_label` property)
+    - register concrete types with elasticsearch_metrics.registry.djelme_registry
+    - allow abstract record types (similar to django's abstract models, with `Meta.abstract`)
     """
 
     Meta: type
 
-    # override IndexMeta.__new__, to do a few things differently
     def __new__(mcls, name, bases, attrs):  # noqa: B902
+        """create a new DjelmeRecordtype subclass
+
+        extend elasticsearch-py's `IndexMeta.__new__` to:
+        - register concrete types with elasticsearch_metrics.registry.djelme_registry
+        - preserve a type's `class Meta` so it can hold additional custom config
+        - inherit field defaults (bug workaround?)
+        """
         # save `class Meta` to un-remove it later
         _cls_meta = attrs.get("Meta") or type("Meta", (), {})
         # call IndexMeta.__new__
@@ -88,7 +97,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
                     setattr(_cls.Meta, _attrname, _attrval)
         else:  # guarantee non-inherited Meta
             _cls.Meta = _cls_meta
-        # workaround elasticsearch.dsl inheriting only fields, not defaults
+        # workaround elasticsearch8.dsl inheriting only fields, not defaults
         for _b in bases:
             for _fieldname, _default in getattr(_b, "_defaults", {}).items():
                 _cls._defaults.setdefault(_fieldname, _default)
@@ -153,7 +162,6 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
     """
 
     UNIQUE_TOGETHER_FIELDS: typing.ClassVar[collections.abc.Iterable[str]] = ()
-    unique_id: str = esdsl.mapped_field(esdsl.Keyword(), default="")  # filled on save
 
     class Meta:
         abstract = True
@@ -178,9 +186,18 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
         return _instance
 
     @classmethod
-    def check_djelme_setup(cls, using: str | None = None) -> bool:
+    def check_djelme_setup(cls, using: str | None = None) -> None:
         # this base class has only a single index -- does it exist?
-        return bool(cls._index.get(using=using))
+        if not cls._index.get(using=using):
+            raise exceptions.TimeseriesSetupError(
+                f"Index {cls._index._name} does not exist"
+            )
+
+    @classmethod
+    @functools.cache
+    def require_been_setup(cls, using: str | None = None) -> None:
+        """check setup once -- raise on failure, remember success"""
+        cls.check_djelme_setup(using)
 
     @classmethod
     def _djelme_teardown(cls, es_client):
@@ -193,9 +210,9 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
     ) -> str | Elastic8Client:
         """get the elasticsearch8 connection name to use
 
-        overrides elasticsearch8.Document._get_using to allow
-        getting connection name from a djelme backend and default
-        to the first configured backend that uses this imp module
+        extend `elasticsearch8.dsl.Document._get_using` to:
+        - recognize djelme backend names in `using` (given or configured)
+        - if no `using` given or configured, find a djelme backend by imp module
         """
         _backend: ProtoDjelmeBackend | None = None
         if using in (None, "default"):
@@ -218,8 +235,11 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
     ) -> typing.Any:
         """save the record
 
-        overrides `save` to populate document_id and send pre_save/post_save signals
+        extend `elasticsearch8.dsl.Document.save` to:
+        - populate document id based on UNIQUE_TOGETHER_FIELDS
+        - send pre_save/post_save signals
         """
+        self.require_been_setup(using=using)  # prevent automapped indexes
         self._populate_unique_id()
         signals.pre_save.send(self.__class__, instance=self, using=using, index=index)
         _saved = super().save(
@@ -231,7 +251,6 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
     def _populate_unique_id(self) -> None:
         _unique_id = self._get_unique_id()
         assert _unique_id or not self.UNIQUE_TOGETHER_FIELDS
-        self.unique_id = _unique_id or ""
         # make it unique by setting doc id in elasticsearch
         if _unique_id:
             self.meta.id = _unique_id
@@ -267,8 +286,7 @@ class TimeseriesRecord(DjelmeRecordtype):
     def init(cls, index=None, using=None) -> None:
         """Create an index template with mappings for timeseries indexes
 
-        overrides elasticsearch.Document.init
-        (but doesn't call super().init(), which would create a "now" index)
+        override `elasticsearch8.dsl.Document.init` to create a template instead of an index
         """
         assert not cls.is_abstract
         cls.sync_index_template(using=using)
@@ -419,8 +437,10 @@ class TimeseriesRecord(DjelmeRecordtype):
         return _template
 
     @classmethod
-    def check_djelme_setup(cls, using: str | Elastic8Client | None = None) -> bool:
+    def check_djelme_setup(cls, using: str | Elastic8Client | None = None) -> None:
         """Check if class is in sync with index template in Elasticsearch.
+
+        override `DjelmeRecordtype.check_djelme_setup` to check for a template instead of an index
 
         :raise: IndexTemplateNotFoundError if index template does not exist.
         :raise: IndexTemplateOutOfSyncError if mappings, settings, or index patterns
@@ -428,7 +448,6 @@ class TimeseriesRecord(DjelmeRecordtype):
         :return: True if index template exsits and mappings, settings, and index patterns
             are in sync.
         """
-        super().check_djelme_setup()
         client = cls._get_connection(using)
         try:
             _template_response = client.indices.get_index_template(
@@ -475,7 +494,6 @@ class TimeseriesRecord(DjelmeRecordtype):
                     patterns_in_sync=patterns_in_sync,
                     settings_in_sync=settings_in_sync,
                 )
-            return True
 
     ###
     # instance methods
@@ -516,7 +534,7 @@ class TimeseriesRecord(DjelmeRecordtype):
     ) -> typing.Any:
         """save the record to a timeseries index
 
-        overrides `Document.save` to choose a specific timeseries index
+        extend `elasticsearch8.dsl.Document.save` to choose a specific timeseries index
         """
         if index is None:
             index = self.djelme_index_name()
