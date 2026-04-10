@@ -160,11 +160,21 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
 
     @classmethod
     def record(
-        cls, *, using: str | None = None, **kwargs: typing.Any
+        cls,
+        *,
+        using: str | typing.Literal[False] | None = None,
+        **kwargs: typing.Any,
     ) -> "typing.Self":  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
-        """Persist a record in Elasticsearch."""
+        """Construct a record instance and save it in Elasticsearch.
+
+        Keyword args:
+        using -- name of the djelme backend or elasticsearch8.dsl connection
+            to use to save, or `False` to skip saving (e.g. for use in a bulk operation)
+        all other kwargs passed thru to the class constructor
+        """
         _instance = cls(**kwargs)
-        _instance.save(using=using)
+        if using is not False:
+            _instance.save(using=using)
         return _instance
 
     @classmethod
