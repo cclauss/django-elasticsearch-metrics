@@ -13,7 +13,6 @@ INSTALLED_APPS = [
 MIDDLEWARE_CLASSES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": "test_djelme"}}
 
-DJELME_AUTOSETUP = True
 DJELME_BACKENDS = {
     "my_elastic6": {
         "elasticsearch_metrics.imps.elastic6": {

@@ -61,15 +61,9 @@ class UsageRecord(EventRecord):
         using = "my-es8-backend"  # backend name -- required if multiple backends use the same imp
 ```
 
-Either enable autosetup...
-```python
-# ... in your django project settings file ...
-DJELME_AUTOSETUP = True
-```
-
-...or be sure to run the `djelme_backend_setup` management command before trying to store anything.
+and be sure to run the `djelme_backend_setup` management command before trying to store anything:
 ```shell
-# This will create an index template for usagerecord timeseries indexes
+# This will create an index template for each timeseries record type
 python manage.py djelme_backend_setup
 ```
 
@@ -191,10 +185,6 @@ class UsageRecord(MyBaseMetric):
       },
   }
   ```
-
-* `DJELME_AUTOSETUP`: Optional feature, default `False` --
-    set `True` to run backend setup automatically when your django app starts
-    (like creating index templates in elasticsearch, if they don't already exist)
 
 * `DJELME_DEFAULT_TIMEDEPTH`: Set the granularity of timeseries indexes by the number of "time parts" in index names
     ```
