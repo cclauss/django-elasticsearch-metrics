@@ -12,11 +12,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         id: setup-py
         with:
-          python-version: '3.11'
+          python-version: '3.13'
       - run: pip install poetry
       - run: poetry install --no-root --with=lint
       - run: poetry run python -m elasticsearch_metrics.tests --lint
@@ -27,7 +27,6 @@ jobs:
       matrix:
         python: ['3.10', '3.11', '3.12', '3.13', '3.14']
         django: ['4.2', '5.1', '5.2']
-        # TODO: elasticsearch: ['6', '7', '8', '9']
     services:
       elasticsearch6:
         image: elasticsearch:6.8.23
@@ -42,8 +41,8 @@ jobs:
           node.name: singlenode
           cluster.initial_master_nodes: singlenode
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         id: setup-py
         with:
           python-version: ${{ matrix.python }}
