@@ -218,15 +218,13 @@ class _DjelmeRegistry:
         self, app_label: str = ""
     ) -> dict[str, collections.abc.Iterable[type[ProtoDjelmeRecord]]]:
         apps.check_apps_ready()  # ensure django setup done
-        _by_backend_name: dict[str, list[type[ProtoDjelmeRecord]]] = (
-            collections.defaultdict(list)
-        )
+        _by_backend_name: dict[str, list[type[ProtoDjelmeRecord]]] = {}
         _app_labels = [app_label] if app_label else self._all_recordtypes.keys()
         for _app_label in _app_labels:
             for _recordtype in self._get_recordtypes_for_app(_app_label).values():
                 _backend_name = self.get_backend_name_for_recordtype(_recordtype)
-                _by_backend_name[_backend_name].append(_recordtype)
-        return dict(_by_backend_name.items())
+                _by_backend_name.setdefault(_backend_name, []).append(_recordtype)
+        return _by_backend_name
 
     ###
     # private methods
