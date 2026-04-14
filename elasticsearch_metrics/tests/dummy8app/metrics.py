@@ -43,9 +43,9 @@ class ThingHappened(djelme.EventRecord):
         timedepth = 1  # yearly timeseries indexes
 
 
-# TODO: tests using ThingHappeningsReport
 class ThingHappeningsReport(djelme.CyclicRecord):
     CYCLE_TIMEDEPTH = 2
+    UNIQUE_TOGETHER_FIELDS = ("cycle_coverage", "thing_id")
 
     thing_id: str
     happen_count: int

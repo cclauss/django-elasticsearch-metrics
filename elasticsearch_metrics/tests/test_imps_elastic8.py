@@ -645,6 +645,72 @@ class TestYearlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         )
 
 
+class TestCyclicRecord(RealElasticTestCase, autosetup_djelme_backends=True):
+    def setUp(self):
+        super().setUp()
+        ThingHappeningsReport.record(
+            cycle_coverage="2000.1", thing_id="a", happen_count=2
+        )
+        ThingHappeningsReport.record(
+            cycle_coverage="2000.1", thing_id="b", happen_count=3
+        )
+        ThingHappeningsReport.record(
+            cycle_coverage="2000.1", thing_id="c", happen_count=4
+        )
+        ThingHappeningsReport.record(
+            cycle_coverage="2000.2", thing_id="a", happen_count=5
+        )
+        ThingHappeningsReport.record(  # this duplicate gets overwritten
+            cycle_coverage="2000.2", thing_id="b", happen_count=67
+        )
+        ThingHappeningsReport.record(  # this duplicate overwrites
+            cycle_coverage="2000.2", thing_id="b", happen_count=6
+        )
+        ThingHappeningsReport.record(
+            cycle_coverage="2000.2", thing_id="c", happen_count=7
+        )
+        ThingHappeningsReport.refresh_timeseries_indexes()
+
+    def test_indexes(self):
+        _index_names = {
+            _strip_test_prefix(_name)
+            for _name, _ in ThingHappeningsReport.each_timeseries_index()
+        }
+        self.assertEqual(
+            _index_names,
+            {
+                "dummy8app_thinghappeningsreport_2000.1.",
+                "dummy8app_thinghappeningsreport_2000.2.",
+            },
+        )
+
+    def test_search(self):
+        _b_search = (
+            ThingHappeningsReport.search()
+            .query({"term": {"thing_id": "b"}})
+            .sort("cycle_coverage")
+        )
+        (_actual_1, _actual_2) = _b_search
+        self.assertEqual(_actual_1.cycle_coverage, "2000.1")
+        self.assertEqual(_actual_1.thing_id, "b")
+        self.assertEqual(_actual_1.happen_count, 3)
+        self.assertEqual(_actual_1.timeseries_timeparts, "2000.1")
+        self.assertEqual(_actual_2.cycle_coverage, "2000.2")
+        self.assertEqual(_actual_2.thing_id, "b")
+        self.assertEqual(_actual_2.happen_count, 6)
+        self.assertEqual(_actual_2.timeseries_timeparts, "2000.2")
+
+    def test_search_range(self):
+        _b_search = ThingHappeningsReport.search_timeseries_range(
+            (2000, 2), (2001,)
+        ).query({"term": {"thing_id": "b"}})
+        (_actual_2,) = _b_search
+        self.assertEqual(_actual_2.cycle_coverage, "2000.2")
+        self.assertEqual(_actual_2.thing_id, "b")
+        self.assertEqual(_actual_2.happen_count, 6)
+        self.assertEqual(_actual_2.timeseries_timeparts, "2000.2")
+
+
 def _strip_test_prefix(index_name: str) -> str:
     # strip uuid test prefix
     (_, _, _without_prefix) = index_name.partition("_")

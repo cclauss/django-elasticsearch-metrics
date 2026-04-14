@@ -308,8 +308,7 @@ class TimeseriesRecord(DjelmeRecordtype):
     def search_timeseries_range(
         cls,
         from_when: tuple[int, ...] | datetime.date,
-        until_when: tuple[int, ...] | datetime.date | None,
-        **kwargs: typing.Any,
+        until_when: tuple[int, ...] | datetime.date,
     ) -> typing.Any:
         _index_pattern = cls.format_timeseries_index_pattern_for_range(
             from_when, until_when
@@ -498,11 +497,6 @@ class TimeseriesRecord(DjelmeRecordtype):
     ###
     # instance methods
 
-    def __init__(self, *args, **kwargs):
-        assert not self.__class__.is_abstract
-        super().__init__(*args, **kwargs)
-        self.timeseries_timeparts = self.get_timeseries_timeparts()
-
     def get_timeseries_timeparts(self) -> str:
         """semverlike string of timeparts, used to choose a timeseries index"""
         raise NotImplementedError(
@@ -514,11 +508,10 @@ class TimeseriesRecord(DjelmeRecordtype):
 
         for ProtoDjelmeRecord
         """
-        assert self.timeseries_timeparts
         _index_name = timeseries_naming.format_index_name(
             app_label=self.__class__.app_label,
             recordtype=self.get_timeseries_recordtype_name(),
-            timeparts=self.timeseries_timeparts,
+            timeparts=self.timeseries_timeparts or self.get_timeseries_timeparts(),
             max_timedepth=self.get_timedepth(),
         )
         return "".join((self.get_timeseries_name_prefix(), _index_name))
@@ -536,6 +529,8 @@ class TimeseriesRecord(DjelmeRecordtype):
 
         extend `elasticsearch8.dsl.Document.save` to choose a specific timeseries index
         """
+        assert not self.__class__.is_abstract
+        self.timeseries_timeparts = self.get_timeseries_timeparts()
         if index is None:
             index = self.djelme_index_name()
         ret = super().save(using=using, index=index, **kwargs)
