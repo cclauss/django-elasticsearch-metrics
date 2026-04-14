@@ -597,7 +597,7 @@ class CountedUsageRecord(EventRecord):
             if (request_host or (django_request is None))
             else django_request.get_host()
         )
-        _sessionhour_id = kwargs.pop("sessionhour_id", None) or opaque_sessionhour_id(
+        _sessionhour_id = sessionhour_id or opaque_sessionhour_id(
             client_session_id=session_id,
             user_id=user_id,
             request_host=_useragent,
