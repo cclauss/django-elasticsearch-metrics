@@ -14,10 +14,11 @@ from elasticsearch_metrics.exceptions import (
     IndexTemplateOutOfSyncError,
 )
 from elasticsearch_metrics.registry import djelme_registry
-from elasticsearch_metrics.tests._test_util import (
+from elasticsearch_metrics.tests.util import (
     SimpleDjelmeTestCase,
     MockSaveTestCase,
     RealElasticTestCase,
+    NoSetupRealElasticTestCase,
 )
 from elasticsearch_metrics.tests.dummy8app.metrics import (
     Dummy8Event,
@@ -338,7 +339,7 @@ class TestSignals(MockSaveTestCase):
         assert post_save_kwargs["sender"] is ThingHappened
 
 
-class TestRealCreate(RealElasticTestCase, autosetup_djelme_backends=True):
+class TestRealCreate(RealElasticTestCase):
     def test_save(self):
         _thing_id = "12345"
         _happen_code = "zyxwv"
@@ -385,7 +386,7 @@ class TestRealCreate(RealElasticTestCase, autosetup_djelme_backends=True):
         assert properties["happen_code"] == {"type": "keyword"}
 
 
-class TestWithoutAutosetup(RealElasticTestCase, autosetup_djelme_backends=False):
+class TestWithoutAutosetup(NoSetupRealElasticTestCase):
     def test_cannot_save_without_template(self):
         _event = Dummy8Event(intensity=2)
         with self.assertRaises(IndexTemplateNotFoundError):
@@ -463,7 +464,7 @@ class TestWithoutAutosetup(RealElasticTestCase, autosetup_djelme_backends=False)
         assert ThingHappened.check_djelme_setup() is None
 
 
-class TestDailyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
+class TestDailyIndexes(RealElasticTestCase):
     def setUp(self):
         super().setUp()
         Dummy8Event.record(timestamp=dt.datetime(1234, 5, 6), intensity=1)
@@ -525,7 +526,7 @@ class TestDailyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         )
 
 
-class TestMonthlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
+class TestMonthlyIndexes(RealElasticTestCase):
     def setUp(self):
         super().setUp()
         Monthly8Event.record(timestamp=dt.datetime(1234, 5, 6), intenzity=1)
@@ -586,7 +587,7 @@ class TestMonthlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         )
 
 
-class TestYearlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
+class TestYearlyIndexes(RealElasticTestCase):
     def setUp(self):
         super().setUp()
         ThingHappened.record(timestamp=dt.datetime(1234, 5, 6), thing_id="a")
@@ -645,7 +646,7 @@ class TestYearlyIndexes(RealElasticTestCase, autosetup_djelme_backends=True):
         )
 
 
-class TestCyclicRecord(RealElasticTestCase, autosetup_djelme_backends=True):
+class TestCyclicRecord(RealElasticTestCase):
     def setUp(self):
         super().setUp()
         ThingHappeningsReport.record(

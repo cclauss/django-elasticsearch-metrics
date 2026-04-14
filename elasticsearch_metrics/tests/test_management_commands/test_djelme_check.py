@@ -3,7 +3,7 @@ from unittest import mock
 from elasticsearch_metrics import exceptions
 from elasticsearch_metrics.management.commands import djelme_backend_check
 from elasticsearch_metrics.registry import registry
-from elasticsearch_metrics.tests._test_util import SimpleDjelmeTestCase
+from elasticsearch_metrics.tests.util import SimpleDjelmeTestCase
 
 
 class TestCheckRecordtypes(SimpleDjelmeTestCase):

@@ -17,10 +17,11 @@ from elasticsearch_metrics.exceptions import (
     IndexTemplateNotFoundError,
     IndexTemplateOutOfSyncError,
 )
-from elasticsearch_metrics.tests._test_util import (
+from elasticsearch_metrics.tests.util import (
     SimpleDjelmeTestCase,
     MockSaveTestCase,
     RealElasticTestCase,
+    NoSetupRealElasticTestCase,
 )
 from elasticsearch_metrics.tests.dummy6app.metrics import (
     Dummy6Metric,
@@ -253,7 +254,7 @@ class TestSignals(MockSaveTestCase):
         assert post_save_kwargs["sender"] is PreprintView
 
 
-class TestIntegration(RealElasticTestCase, autosetup_djelme_backends=True):
+class TestIntegration(RealElasticTestCase):
     @property
     def es6_client(self):
         return connections.get_connection("my_elastic6")
@@ -279,7 +280,7 @@ class TestIntegration(RealElasticTestCase, autosetup_djelme_backends=True):
         assert properties["preprint_id"] == {"type": "keyword"}
 
 
-class TestIntegrationSetup(RealElasticTestCase, autosetup_djelme_backends=False):
+class TestIntegrationSetup(NoSetupRealElasticTestCase):
     @property
     def es6_client(self):
         return connections.get_connection("my_elastic6")

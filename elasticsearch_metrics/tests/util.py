@@ -1,7 +1,6 @@
 import contextlib
 from io import StringIO
 import types
-import typing
 from unittest import mock
 import uuid
 
@@ -10,6 +9,23 @@ from django.core.management.base import BaseCommand
 from django.test import SimpleTestCase
 
 from elasticsearch_metrics.registry import djelme_registry
+
+
+@contextlib.contextmanager
+def djelme_test_backends():
+    """context manager to wrap tests that use djelme with actual elasticsearch
+
+    gives index names a unique prefix
+
+    sets up and tears down all backends configured in django.conf.settings.DJELME_BACKENDS
+    """
+    clear_setup_check_caches()
+    with prefixed_index_names():
+        setup_backends()
+        try:
+            yield
+        finally:
+            teardown_backends()
 
 
 class SimpleDjelmeTestCase(SimpleTestCase):
@@ -42,35 +58,30 @@ class SimpleDjelmeTestCase(SimpleTestCase):
 class RealElasticTestCase(SimpleDjelmeTestCase):
     """RealElasticTestCase: base test case with actual elasticsearch running"""
 
-    __autosetup_backends: bool
-    __autoteardown_backends: bool
+    def setUp(self):
+        self.enterContext(djelme_test_backends())
 
-    def __init_subclass__(
-        cls,
-        /,  # kwargs on class creation e.g. `Foo(RealElasticTestCase, autosetup_djelme_backends=False)
-        autosetup_djelme_backends: bool,  # required
-        autoteardown_djelme_backends: bool = True,
-        **kwargs: typing.Any,
-    ):
-        super().__init_subclass__(**kwargs)
-        cls.__autosetup_backends = autosetup_djelme_backends
-        cls.__autoteardown_backends = autoteardown_djelme_backends
+
+class NoSetupRealElasticTestCase(SimpleDjelmeTestCase):
+    """NoSetupRealElasticTestCase: base test case with actual elasticsearch running
+
+    same as RealElasticTestCase but skip djelme backend setup
+    """
 
     def setUp(self):
+        clear_setup_check_caches()
         self.enterContext(prefixed_index_names())
         super().setUp()
-        if self.__autosetup_backends:
-            setup_backends()
 
     def tearDown(self):
-        if self.__autoteardown_backends:
-            teardown_backends()
+        teardown_backends()
         super().tearDown()
 
 
 class MockSaveTestCase(SimpleDjelmeTestCase):
     def setUp(self):
         super().setUp()
+        clear_setup_check_caches()
         self.mocked_es6_save = self.enterContext(
             mock.patch("elasticsearch_metrics.imps.elastic6.Document.save"),
         )

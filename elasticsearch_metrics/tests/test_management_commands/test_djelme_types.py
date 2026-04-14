@@ -1,5 +1,5 @@
 from elasticsearch_metrics.management.commands import djelme_backend_types
-from elasticsearch_metrics.tests._test_util import SimpleDjelmeTestCase
+from elasticsearch_metrics.tests.util import SimpleDjelmeTestCase
 
 
 class TestDjelmeTypesCommand(SimpleDjelmeTestCase):
