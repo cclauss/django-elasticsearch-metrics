@@ -43,6 +43,7 @@ from elasticsearch_metrics.protocols import (
     ProtoDjelmeRecord,
 )
 from elasticsearch_metrics.util import timeseries_naming
+from elasticsearch_metrics.util.django import find_app_label_for_module
 from elasticsearch_metrics.util.timeparts import format_full_timeparts, format_timeparts
 from elasticsearch_metrics.util.unique_together import get_unique_id
 from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
@@ -66,8 +67,8 @@ esdsl.document_base.DocumentOptions.type_annotation_map[str] = (esdsl.Keyword, {
 
 
 # changes to document metaclass behavior
-class _DjelmeRecordtypeMetaclass(IndexMeta):
-    """Metaclass for the base `DjelmeRecordtype` class.
+class _DjelmeRecordMetaclass(IndexMeta):
+    """Metaclass for the base `BaseDjelmeRecord` class.
 
     extend elasticsearch-py's `IndexMeta` to:
     - belong to a django app (identified by `app_label` property)
@@ -78,7 +79,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
     Meta: type
 
     def __new__(mcls, name, bases, attrs):  # noqa: B902
-        """create a new DjelmeRecordtype subclass
+        """create a new BaseDjelmeRecord subclass
 
         extend elasticsearch-py's `IndexMeta.__new__` to:
         - register concrete types with elasticsearch_metrics.registry.djelme_registry
@@ -89,7 +90,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
         _cls_meta = attrs.get("Meta") or type("Meta", (), {})
         # call IndexMeta.__new__
         _cls = super().__new__(mcls, name, bases, attrs)
-        assert isinstance(_cls, _DjelmeRecordtypeMetaclass)
+        assert isinstance(_cls, _DjelmeRecordMetaclass)
         # un-remove `class Meta` for later use
         if "Meta" in _cls.__dict__:
             for _attrname, _attrval in _cls_meta.__dict__.items():
@@ -103,7 +104,7 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
                 _cls._defaults.setdefault(_fieldname, _default)
         # and register concrete record types with the djelme registry
         if not _cls.is_abstract:
-            assert issubclass(_cls, DjelmeRecordtype)
+            assert issubclass(_cls, BaseDjelmeRecord)
             _given_using = _cls._index._using
             _default_backend = (
                 _given_using
@@ -134,10 +135,10 @@ class _DjelmeRecordtypeMetaclass(IndexMeta):
         return _app_label
 
 
-class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
+class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
     """a subclass of elasticsearch8.dsl.Document, with conveniences
 
-    >>> class MyAbstractRecord(DjelmeRecordtype):
+    >>> class MyAbstractRecord(BaseDjelmeRecord):
     ...     foo: int
     ...     class Meta:
     ...         abstract = True
@@ -167,6 +168,14 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
         abstract = True
 
     @classmethod
+    def check_djelme_setup(cls, using: str | None = None) -> None:
+        raise NotImplementedError  # expected on subclasses
+
+    @classmethod
+    def do_teardown(cls, es_client):
+        raise NotImplementedError  # expected on subclasses
+
+    @classmethod
     def record(
         cls,
         *,
@@ -186,23 +195,16 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
         return _instance
 
     @classmethod
-    def check_djelme_setup(cls, using: str | None = None) -> None:
-        # this base class has only a single index -- does it exist?
-        if not cls._index.get(using=using):
-            raise exceptions.TimeseriesSetupError(
-                f"Index {cls._index._name} does not exist"
-            )
-
-    @classmethod
     @functools.cache
     def require_been_setup(cls, using: str | None = None) -> None:
         """check setup once -- raise on failure, remember success"""
         cls.check_djelme_setup(using)
 
     @classmethod
-    def _djelme_teardown(cls, es_client):
-        # this base class has only a single index -- delete it
-        cls._index.delete(using=es_client)
+    def get_index_name_prefix(cls) -> str:
+        _name_prefix = cls._get_meta_attr("index_name_prefix") or ""
+        assert isinstance(_name_prefix, str)
+        return _name_prefix
 
     @classmethod
     def _get_using(
@@ -269,7 +271,72 @@ class DjelmeRecordtype(esdsl.Document, metaclass=_DjelmeRecordtypeMetaclass):
         )
 
 
-class TimeseriesRecord(DjelmeRecordtype):
+class _SimpleRecordMetaclass(_DjelmeRecordMetaclass):
+    def __new__(mcls, name, bases, attrs):  # noqa: B902
+        """
+        extend _DjelmeRecordMetaclass.__new__ to set index name by app label and type name
+        """
+        _index = attrs.get("Index")
+        if not _index:
+            _index = type("Index", (), {})
+            attrs["Index"] = _index
+        if not getattr(_index, "name", None):
+            _app_label = find_app_label_for_module(attrs["__module__"])
+            _index.name = f"{_app_label.lower()}_{name.lower()}"
+        return super().__new__(mcls, name, bases, attrs)
+
+
+class SimpleRecord(BaseDjelmeRecord, metaclass=_SimpleRecordMetaclass):
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if not cls.is_abstract:
+            _prefix = cls.get_index_name_prefix()
+            _name = cls._index._name
+            if not _name.startswith(_prefix):
+                cls._index._name = f"{_prefix}{_name}"
+
+    @classmethod
+    def djelme_index_name(cls) -> str:
+        """the index name for this record type
+
+        for ProtoDjelmeRecord
+        """
+        return cls._index._name
+
+    @classmethod
+    def check_djelme_setup(cls, using: str | None = None) -> None:
+        """Check if class is in sync with index mappings in Elasticsearch.
+
+        :raise: IndexNotFoundError if index does not exist.
+        :raise: IndexOutOfSyncError if mappings are out of sync.
+        :return: if index exists and mappings are in sync.
+        """
+        _client = cls._get_connection(using)
+        _index_name = cls.djelme_index_name()
+        try:
+            _index_response = _client.indices.get(index=_index_name)
+        except NotFoundError as client_error:
+            raise exceptions.IndexNotFoundError(
+                f"Index {_index_name} does not exist for {cls.__name__}",
+                client_error=client_error,
+            ) from client_error
+        else:
+            _current_mappings = _index_response[_index_name]["mappings"]
+            _expected_mappings = cls._index.to_dict()["mappings"]
+            if _current_mappings != _expected_mappings:
+                raise exceptions.IndexOutOfSyncError(
+                    f"Index {_index_name} has mappings out of sync with {cls.__name__}",
+                )
+
+    @classmethod
+    def do_teardown(cls, es_client):
+        cls._index.delete(using=es_client, ignore_unavailable=True)
+
+    class Meta:
+        abstract = True
+
+
+class TimeseriesRecord(BaseDjelmeRecord):
     # the 'version' field type allows range queries on semver-like strings
     # that fit perfectly with "timeparts" representation of a UTC datetime
     # as a sequence of integers -- helps to avoid time zones and date math
@@ -340,7 +407,7 @@ class TimeseriesRecord(DjelmeRecordtype):
             yield _index_name, _index_info
 
     @classmethod
-    def _djelme_teardown(cls, es8_client: Elastic8Client) -> None:
+    def do_teardown(cls, es8_client: Elastic8Client) -> None:
         _indexname_wildcard = cls.format_timeseries_index_pattern()
         _indices = es8_client.indices.get(index=_indexname_wildcard, features=",")
         for _index_name in _indices.keys():
@@ -363,7 +430,7 @@ class TimeseriesRecord(DjelmeRecordtype):
         _template_name = timeseries_naming.format_template_name(
             cls.app_label, cls.get_timeseries_recordtype_name()
         )
-        return "".join((cls.get_timeseries_name_prefix(), _template_name))
+        return "".join((cls.get_index_name_prefix(), _template_name))
 
     @classmethod
     def get_timeseries_recordtype_name(cls) -> str:
@@ -374,12 +441,6 @@ class TimeseriesRecord(DjelmeRecordtype):
         return _recordtype_name
 
     @classmethod
-    def get_timeseries_name_prefix(cls) -> str:
-        _name_prefix = cls._get_meta_attr("timeseries_name_prefix") or ""
-        assert isinstance(_name_prefix, str)
-        return _name_prefix
-
-    @classmethod
     def format_timeseries_index_pattern(cls, timeparts: tuple[int, ...] = ()) -> str:
         _pattern = timeseries_naming.format_index_pattern(
             app_label=cls.app_label,
@@ -387,7 +448,7 @@ class TimeseriesRecord(DjelmeRecordtype):
             timeparts=timeparts,
             max_timedepth=cls.get_timedepth(),
         )
-        return "".join((cls.get_timeseries_name_prefix(), _pattern))
+        return "".join((cls.get_index_name_prefix(), _pattern))
 
     @classmethod
     def format_timeseries_index_pattern_for_range(
@@ -402,7 +463,7 @@ class TimeseriesRecord(DjelmeRecordtype):
             until_when or utcnow(),
             timedepth=cls.get_timedepth(),
         )
-        return "".join((cls.get_timeseries_name_prefix(), _pattern))
+        return "".join((cls.get_index_name_prefix(), _pattern))
 
     @classmethod
     def get_timedepth(cls) -> int:
@@ -439,7 +500,7 @@ class TimeseriesRecord(DjelmeRecordtype):
     def check_djelme_setup(cls, using: str | Elastic8Client | None = None) -> None:
         """Check if class is in sync with index template in Elasticsearch.
 
-        override `DjelmeRecordtype.check_djelme_setup` to check for a template instead of an index
+        override `BaseDjelmeRecord.check_djelme_setup` to check for a template instead of an index
 
         :raise: IndexTemplateNotFoundError if index template does not exist.
         :raise: IndexTemplateOutOfSyncError if mappings, settings, or index patterns
@@ -514,7 +575,7 @@ class TimeseriesRecord(DjelmeRecordtype):
             timeparts=self.timeseries_timeparts or self.get_timeseries_timeparts(),
             max_timedepth=self.get_timedepth(),
         )
-        return "".join((self.get_timeseries_name_prefix(), _index_name))
+        return "".join((self.get_index_name_prefix(), _index_name))
 
     def save(
         self,
@@ -676,21 +737,21 @@ class DjelmeElastic8Backend:
         # for ProtoDjelmeBackend
         for _recordtype in recordtypes:
             # TODO: logger.info
-            assert issubclass(_recordtype, DjelmeRecordtype)
+            assert issubclass(_recordtype, BaseDjelmeRecord)
             _recordtype.init(using=self._elastic8dsl_connection_name)
 
     def djelme_teardown(self, recordtypes: collections.abc.Iterable[type]) -> None:
         # for ProtoDjelmeBackend
         for _recordtype in recordtypes:
-            assert issubclass(_recordtype, DjelmeRecordtype)
-            _recordtype._djelme_teardown(self.elastic8_client)
+            assert issubclass(_recordtype, BaseDjelmeRecord)
+            _recordtype.do_teardown(self.elastic8_client)
 
 
 if __debug__ and typing.TYPE_CHECKING:
     # for static type-checking; verify intent
     _: type[ProtoCountedUsage] = CountedUsageRecord
     __: type[ProtoDjelmeBackend] = DjelmeElastic8Backend
-    ___: type[ProtoDjelmeRecord] = DjelmeRecordtype
+    ___: type[ProtoDjelmeRecord] = BaseDjelmeRecord
 
 ###
 # names expected by ProtoDjelmeImp

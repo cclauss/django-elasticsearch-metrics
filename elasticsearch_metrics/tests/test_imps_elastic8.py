@@ -25,6 +25,7 @@ from elasticsearch_metrics.tests.dummy8app.metrics import (
     Monthly8Event,
     ThingHappened,
     ThingHappeningsReport,
+    SimpleKV,
 )
 
 
@@ -710,6 +711,22 @@ class TestCyclicRecord(RealElasticTestCase):
         self.assertEqual(_actual_2.thing_id, "b")
         self.assertEqual(_actual_2.happen_count, 6)
         self.assertEqual(_actual_2.timeseries_timeparts, "2000.2")
+
+
+class TestSingleIndex(RealElasticTestCase):
+    def setUp(self):
+        super().setUp()
+        SimpleKV.record(key="hello", val=2)
+        SimpleKV.record(key="goodbye", val=-2)
+        SimpleKV._index.refresh()
+
+    def test_search(self):
+        (_hello,) = SimpleKV.search().query({"term": {"key": "hello"}}).execute()
+        self.assertEqual(_hello.key, "hello")
+        self.assertEqual(_hello.val, 2)
+        (_goodbye,) = SimpleKV.search().query({"term": {"key": "goodbye"}}).execute()
+        self.assertEqual(_goodbye.key, "goodbye")
+        self.assertEqual(_goodbye.val, -2)
 
 
 def _strip_test_prefix(index_name: str) -> str:

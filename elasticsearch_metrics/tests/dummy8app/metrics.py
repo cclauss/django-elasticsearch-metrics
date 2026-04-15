@@ -18,7 +18,7 @@ class Monthly8Event(djelme.EventRecord):
     intenzity: int
 
     class Meta:
-        timeseries_name_prefix = "dummy8evenz"
+        index_name_prefix = "dummy8evenz"
         timeseries_recordtype_name = "eventlog"
         timedepth = 2
 
@@ -54,5 +54,14 @@ class ThingHappeningsReport(djelme.CyclicRecord):
         using = "my_elastic8_reports"
 
     class Meta:
-        timeseries_name_prefix = "blarg_"
+        index_name_prefix = "blarg_"
         timedepth = 2  # monthly timeseries indexes
+
+
+class SimpleKV(djelme.SimpleRecord):
+    UNIQUE_TOGETHER_FIELDS = ("key",)
+    key: str
+    val: int
+
+    class Index:
+        using = "my_elastic8_reports"

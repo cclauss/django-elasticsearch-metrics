@@ -14,7 +14,7 @@ from elasticsearch_metrics.protocols import (
     ProtoDjelmeRecord,
     ProtoDjelmeImp,
 )
-from elasticsearch_metrics.util.django import find_app_label_for_type
+from elasticsearch_metrics.util.django import find_app_label_for_module
 from elasticsearch_metrics.util.timeseries_naming import format_namepart
 
 __all__ = ("djelme_registry",)
@@ -73,7 +73,7 @@ class _DjelmeRegistry:
         default_backend: str = "",
     ) -> None:
         """Add a record type to the registry."""
-        _app_label = app_label or find_app_label_for_type(recordtype)
+        _app_label = app_label or find_app_label_for_module(recordtype.__module__)
         app_recordtypes = self._all_recordtypes[_app_label]
         recordtype_name = format_namepart(recordtype.__name__)
         if recordtype_name in app_recordtypes:

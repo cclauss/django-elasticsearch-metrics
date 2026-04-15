@@ -138,12 +138,12 @@ class MetricMeta(IndexMeta):
 
     @property
     def _template_name(self):
-        _prefix = self.get_timeseries_name_prefix()
+        _prefix = self.get_index_name_prefix()
         return f"{_prefix}{self.__template_name}"
 
     @property
     def _template_pattern(self):
-        _prefix = self.get_timeseries_name_prefix()
+        _prefix = self.get_index_name_prefix()
         return f"{_prefix}{self.__template_pattern}"
 
 
@@ -266,7 +266,7 @@ class BaseMetric(metaclass=MetricMeta):
         )
 
     @classmethod
-    def get_timeseries_name_prefix(cls) -> str:
+    def get_index_name_prefix(cls) -> str:
         return ""
 
     @classmethod

@@ -93,7 +93,7 @@ class MockSaveTestCase(SimpleDjelmeTestCase):
         )
         self.mocked_es8_require_been_setup = self.enterContext(
             mock.patch(
-                "elasticsearch_metrics.imps.elastic8.DjelmeRecordtype.require_been_setup"
+                "elasticsearch_metrics.imps.elastic8.BaseDjelmeRecord.require_been_setup"
             ),
         )
 
@@ -103,11 +103,11 @@ def prefixed_index_names(prefix: str = ""):
     _name_prefix = prefix or f"{uuid.uuid4().hex}_"
     with (
         mock.patch(
-            "elasticsearch_metrics.imps.elastic8.TimeseriesRecord.get_timeseries_name_prefix",
+            "elasticsearch_metrics.imps.elastic8.BaseDjelmeRecord.get_index_name_prefix",
             return_value=_name_prefix,
         ),
         mock.patch(
-            "elasticsearch_metrics.imps.elastic6.BaseMetric.get_timeseries_name_prefix",
+            "elasticsearch_metrics.imps.elastic6.BaseMetric.get_index_name_prefix",
             return_value=_name_prefix,
         ),
     ):
@@ -118,7 +118,7 @@ def clear_setup_check_caches():
     from elasticsearch_metrics.imps import elastic6, elastic8
 
     elastic6.Metric.require_been_setup.cache_clear()
-    elastic8.DjelmeRecordtype.require_been_setup.cache_clear()
+    elastic8.BaseDjelmeRecord.require_been_setup.cache_clear()
 
 
 def setup_backends():

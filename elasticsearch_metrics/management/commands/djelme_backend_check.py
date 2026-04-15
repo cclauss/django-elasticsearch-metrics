@@ -1,6 +1,5 @@
-import sys
 import logging
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from django.utils.termcolors import colorize
 
@@ -31,10 +30,7 @@ class Command(BaseCommand):
             for _recordtype in djelme_registry.each_recordtype(app_label=_app_label):
                 try:
                     _recordtype.check_djelme_setup()
-                except (
-                    exceptions.IndexTemplateNotFoundError,
-                    exceptions.IndexTemplateOutOfSyncError,
-                ) as error:
+                except exceptions.DjelmeSetupError as error:
                     self.stdout.write("  " + error.args[0])
                     out_of_sync_count += 1
 
@@ -45,6 +41,6 @@ class Command(BaseCommand):
             )
             cmd = colorize("python manage.py djelme_backend_setup", opts=("bold",))
             self.stdout.write("Run {cmd} to set up index templates.".format(cmd=cmd))
-            sys.exit(1)
+            raise CommandError(1)
         else:
             self.stdout.write("All djelme recordtypes set up.", style.SUCCESS)

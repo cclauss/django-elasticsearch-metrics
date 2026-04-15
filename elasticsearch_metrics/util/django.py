@@ -3,17 +3,15 @@
 from django.apps import apps
 from django.core import exceptions
 
-__all__ = ("find_app_label_for_type",)
+__all__ = ("find_app_label_for_module",)
 
 
-def find_app_label_for_type(given_type: type) -> str:
-    # look for an installed django app the given type is defined within
-    _given_module_name = given_type.__module__
+def find_app_label_for_module(module_name: str) -> str:
     _containing_app_configs = (
         _app_config
         for _app_config in apps.get_app_configs()
         if (_app_config.module is not None)
-        and _given_module_name.startswith(_app_config.module.__name__)
+        and module_name.startswith(_app_config.module.__name__)
     )
     _nearest_containing_app_config = max(
         _containing_app_configs,
@@ -24,9 +22,7 @@ def find_app_label_for_type(given_type: type) -> str:
     )
     if _nearest_containing_app_config is None:
         raise exceptions.ImproperlyConfigured(
-            f"type {given_type.__module__}.{given_type.__qualname__} "
-            "doesn't declare an explicit app_label and isn't in an "
-            "application in INSTALLED_APPS."
+            f"module {module_name} isn't in an application in INSTALLED_APPS."
         )
     _label = _nearest_containing_app_config.label
     if not (_label and isinstance(_label, str)):
