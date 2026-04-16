@@ -10,9 +10,6 @@ dot_path_analyzer = esdsl.analyzer(
 class Dummy8Event(djelme.EventRecord):
     intensity: int
 
-    class Index:
-        using = "my_elastic8_events"
-
 
 class Monthly8Event(djelme.EventRecord):
     intenzity: int
@@ -21,9 +18,6 @@ class Monthly8Event(djelme.EventRecord):
         index_name_prefix = "dummy8evenz"
         timeseries_recordtype_name = "eventlog"
         timedepth = 2
-
-    class Index:
-        using = "my_elastic8_events"
 
 
 class ThingHappened(djelme.EventRecord):
@@ -36,7 +30,6 @@ class ThingHappened(djelme.EventRecord):
 
     class Index:
         settings = {"refresh_interval": "-1"}
-        using = "my_elastic8_events"
 
     class Meta:
         timeseries_recordtype_name = "happen"
@@ -50,9 +43,6 @@ class ThingHappeningsReport(djelme.CyclicRecord):
     thing_id: str
     happen_count: int
 
-    class Index:
-        using = "my_elastic8_reports"
-
     class Meta:
         index_name_prefix = "blarg_"
         timedepth = 2  # monthly timeseries indexes
@@ -62,6 +52,3 @@ class SimpleKV(djelme.SimpleRecord):
     UNIQUE_TOGETHER_FIELDS = ("key",)
     key: str
     val: int
-
-    class Index:
-        using = "my_elastic8_reports"

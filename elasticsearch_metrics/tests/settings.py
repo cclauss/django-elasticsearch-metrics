@@ -19,12 +19,7 @@ DJELME_BACKENDS = {
             "hosts": os.environ.get("ELASTICSEARCH6_URL", ""),
         },
     },
-    "my_elastic8_events": {
-        "elasticsearch_metrics.imps.elastic8": {
-            "hosts": os.environ.get("ELASTICSEARCH8_URL", ""),
-        },
-    },
-    "my_elastic8_reports": {
+    "my_elastic8": {
         "elasticsearch_metrics.imps.elastic8": {
             "hosts": os.environ.get("ELASTICSEARCH8_URL", ""),
         },

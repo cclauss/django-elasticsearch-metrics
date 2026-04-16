@@ -30,7 +30,7 @@ from elasticsearch_metrics.tests.dummy8app.metrics import (
 
 
 def _es8_client(
-    backend_name: str = "my_elastic8_events",
+    backend_name: str = "my_elastic8",
 ) -> elasticsearch8.Elasticsearch:
     _backend = djelme_registry.get_backend(backend_name)
     assert isinstance(_backend, djelme.DjelmeElastic8Backend)
@@ -224,9 +224,6 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_get_index_template_uses_app_label_in_class_meta(self):
         class MyRecord(djelme.TimeseriesRecord):
-            class Index:
-                using = "my_elastic8_events"
-
             class Meta:
                 app_label = "myapp"
 
@@ -248,7 +245,6 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
             class Index:
                 settings = {"number_of_shards": 2}
-                using = "my_elastic8_events"
 
             class Meta:
                 abstract = True
@@ -263,9 +259,6 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
     def test_source_may_be_enabled(self):
         class MyRecord(djelme.TimeseriesRecord):
-            class Index:
-                using = "my_elastic8_events"
-
             class Meta:
                 app_label = "dummy8app"
                 timeseries_recordtype_name = "myrecord"
@@ -475,7 +468,7 @@ class TestDailyIndexes(RealElasticTestCase):
         Dummy8Event.record(timestamp=dt.datetime(1235, 5, 6), intensity=111)
         Dummy8Event.record(timestamp=dt.datetime(2345, 6, 9), intensity=11)
         Dummy8Event.record(timestamp=dt.datetime(2345, 7, 9), intensity=13)
-        Dummy8Event.refresh_timeseries_indexes()
+        Dummy8Event.refresh()
 
     def test_indexes(self):
         _index_names = {
@@ -537,7 +530,7 @@ class TestMonthlyIndexes(RealElasticTestCase):
         Monthly8Event.record(timestamp=dt.datetime(1235, 5, 6), intenzity=111)
         Monthly8Event.record(timestamp=dt.datetime(2345, 6, 9), intenzity=11)
         Monthly8Event.record(timestamp=dt.datetime(2345, 7, 9), intenzity=13)
-        Monthly8Event.refresh_timeseries_indexes()
+        Monthly8Event.refresh()
 
     def test_indexes(self):
         _index_names = {
@@ -598,7 +591,7 @@ class TestYearlyIndexes(RealElasticTestCase):
         ThingHappened.record(timestamp=dt.datetime(1235, 5, 6), thing_id="e")
         ThingHappened.record(timestamp=dt.datetime(2345, 6, 9), thing_id="f")
         ThingHappened.record(timestamp=dt.datetime(2345, 7, 9), thing_id="g")
-        ThingHappened.refresh_timeseries_indexes()
+        ThingHappened.refresh()
 
     def test_indexes(self):
         _index_names = {
@@ -671,7 +664,7 @@ class TestCyclicRecord(RealElasticTestCase):
         ThingHappeningsReport.record(
             cycle_coverage="2000.2", thing_id="c", happen_count=7
         )
-        ThingHappeningsReport.refresh_timeseries_indexes()
+        ThingHappeningsReport.refresh()
 
     def test_indexes(self):
         _index_names = {
@@ -718,7 +711,7 @@ class TestSingleIndex(RealElasticTestCase):
         super().setUp()
         SimpleKV.record(key="hello", val=2)
         SimpleKV.record(key="goodbye", val=-2)
-        SimpleKV._index.refresh()
+        SimpleKV.refresh()
 
     def test_search(self):
         (_hello,) = SimpleKV.search().query({"term": {"key": "hello"}}).execute()

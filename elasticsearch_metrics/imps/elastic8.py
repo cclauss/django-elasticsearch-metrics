@@ -120,6 +120,32 @@ class _DjelmeRecordMetaclass(IndexMeta):
             )
         return _cls
 
+    @classmethod
+    def construct_index(cls, opts, bases):
+        """
+        Override IndexMeta.construct_index so a new Index is created for each class
+        and Index.settings, Index.analyzers, and Index.using are inherited
+        (but not Index.name or Index.aliases)
+        """
+        _base_index_configs = collections.ChainMap(
+            *(base._index.to_dict() for base in bases if hasattr(base, "_index"))
+        )
+        _index_opts = opts or type("Index", (), {})
+        if not hasattr(_index_opts, "settings") and (
+            _inherited_settings := _base_index_configs.get("settings")
+        ):
+            _index_opts.settings = _inherited_settings
+        if not hasattr(_index_opts, "analyzers") and (
+            _inherited_analyzers := _base_index_configs.get("analyzers")
+        ):
+            _index_opts.analyzers = _inherited_analyzers
+        if not hasattr(_index_opts, "using"):
+            _inherited_using = _base_index_configs.get("using")
+            if _inherited_using and (_inherited_using != "default"):
+                _index_opts.using = _inherited_using
+        assert _index_opts is not None  # guarantee separate index per class
+        return super().construct_index(_index_opts, bases)
+
     def _get_meta_attr(self, attr_name: str, default: typing.Any = None) -> typing.Any:
         _meta = getattr(self, "Meta", None)
         return getattr(_meta, attr_name, default)
@@ -189,6 +215,7 @@ class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
             to use to save, or `False` to skip saving (e.g. for use in a bulk operation)
         all other kwargs passed thru to the class constructor
         """
+        assert not cls.is_abstract
         _instance = cls(**kwargs)
         if using is not False:
             _instance.save(using=using)
@@ -241,6 +268,7 @@ class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
         - populate document id based on UNIQUE_TOGETHER_FIELDS
         - send pre_save/post_save signals
         """
+        assert not self.__class__.is_abstract
         self.require_been_setup(using=using)  # prevent automapped indexes
         self._populate_unique_id()
         signals.pre_save.send(self.__class__, instance=self, using=using, index=index)
@@ -276,24 +304,26 @@ class _SimpleRecordMetaclass(_DjelmeRecordMetaclass):
         """
         extend _DjelmeRecordMetaclass.__new__ to set index name by app label and type name
         """
-        _index = attrs.get("Index")
-        if not _index:
-            _index = type("Index", (), {})
-            attrs["Index"] = _index
-        if not getattr(_index, "name", None):
-            _app_label = find_app_label_for_module(attrs["__module__"])
-            _index.name = f"{_app_label.lower()}_{name.lower()}"
-        return super().__new__(mcls, name, bases, attrs)
+        _cls = super().__new__(mcls, name, bases, attrs)
+        if not _cls.is_abstract:
+            # set `_index._name`, if not already specified
+            _index_name = _cls._index._name
+            if not _index_name or (_index_name in ("*", "default")):
+                _app_label = find_app_label_for_module(attrs["__module__"])
+                _index_name = f"{_app_label.lower()}_{_cls.__name__.lower()}"
+            _prefix = _cls.get_index_name_prefix()
+            if not _index_name.startswith(_prefix):
+                _index_name = f"{_prefix}{_index_name}"
+            _cls._index._name = _index_name
+            # set `_index._using`, so `_index` can be used normally
+            _backend = djelme_registry.get_backend_for_recordtype(_cls)
+            _cls._index._using = _backend._elastic8dsl_connection_name
+        return _cls
 
 
 class SimpleRecord(BaseDjelmeRecord, metaclass=_SimpleRecordMetaclass):
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        if not cls.is_abstract:
-            _prefix = cls.get_index_name_prefix()
-            _name = cls._index._name
-            if not _name.startswith(_prefix):
-                cls._index._name = f"{_prefix}{_name}"
+    class Meta:
+        abstract = True
 
     @classmethod
     def djelme_index_name(cls) -> str:
@@ -301,6 +331,7 @@ class SimpleRecord(BaseDjelmeRecord, metaclass=_SimpleRecordMetaclass):
 
         for ProtoDjelmeRecord
         """
+        assert not cls.is_abstract
         return cls._index._name
 
     @classmethod
@@ -311,6 +342,7 @@ class SimpleRecord(BaseDjelmeRecord, metaclass=_SimpleRecordMetaclass):
         :raise: IndexOutOfSyncError if mappings are out of sync.
         :return: if index exists and mappings are in sync.
         """
+        assert not cls.is_abstract
         _client = cls._get_connection(using)
         _index_name = cls.djelme_index_name()
         try:
@@ -330,10 +362,13 @@ class SimpleRecord(BaseDjelmeRecord, metaclass=_SimpleRecordMetaclass):
 
     @classmethod
     def do_teardown(cls, es_client):
+        assert not cls.is_abstract
         cls._index.delete(using=es_client, ignore_unavailable=True)
 
-    class Meta:
-        abstract = True
+    @classmethod
+    def refresh(cls, using: str | None = None) -> None:
+        assert not cls.is_abstract
+        cls._index.refresh(using=using)
 
 
 class TimeseriesRecord(BaseDjelmeRecord):
@@ -366,6 +401,7 @@ class TimeseriesRecord(BaseDjelmeRecord):
     ) -> esdsl.Search[
         "typing.Self"
     ]:  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
+        assert not cls.is_abstract
         return super().search(
             using=using,
             index=(index or cls.format_timeseries_index_pattern()),
@@ -389,7 +425,8 @@ class TimeseriesRecord(BaseDjelmeRecord):
         return cls.search(index=_index_pattern).filter(_timeseries_q)
 
     @classmethod
-    def refresh_timeseries_indexes(cls, using: str | None = None) -> None:
+    def refresh(cls, using: str | None = None) -> None:
+        assert not cls.is_abstract
         cls._get_connection(using).indices.refresh(
             index=cls.format_timeseries_index_pattern()
         )
@@ -408,6 +445,7 @@ class TimeseriesRecord(BaseDjelmeRecord):
 
     @classmethod
     def do_teardown(cls, es8_client: Elastic8Client) -> None:
+        assert not cls.is_abstract
         _indexname_wildcard = cls.format_timeseries_index_pattern()
         _indices = es8_client.indices.get(index=_indexname_wildcard, features=",")
         for _index_name in _indices.keys():
@@ -420,6 +458,7 @@ class TimeseriesRecord(BaseDjelmeRecord):
 
     @classmethod
     def get_timeseries_template(cls) -> esdsl.ComposableIndexTemplate:
+        assert not cls.is_abstract
         return cls._index.as_composable_template(
             template_name=cls.get_timeseries_template_name(),
             pattern=cls.format_timeseries_index_pattern(),
