@@ -7,6 +7,7 @@ import argparse
 import collections
 import os
 import subprocess
+import sys
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--lint", action="store_true")  # _args.lint
@@ -40,7 +41,11 @@ def print_header(*args: str) -> None:
 
 def _run(*args: str, header: str = "") -> None:
     print_header(header) if header else print_header(*args)
-    subprocess.run(args, check=True)  # stop on error
+    try:
+        subprocess.run(args, check=True)  # stop on error
+    except subprocess.CalledProcessError as _e:
+        print(f"\n\n^^ errored ({_e.returncode}) ^^")
+        sys.exit()
 
 
 def run_lint() -> None:
