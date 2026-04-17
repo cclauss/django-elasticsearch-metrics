@@ -21,6 +21,9 @@ def opaque_key(
     >>> opaque_key(['hello', 'hello', 'hello'])
     '*58u_=`?3#G!N(%j!3kqU7#Npt>Xvj=|3<75BRoi$0j;F-*3V+Cc?P1FvcVW76T_`5^NaI*_3787SsBn'
     """
+    _parts = [str(_part) for _part in key_parts]
+    if not _parts:
+        raise ValueError("opaque_key expects at least one key part")
     _plain_key = json.dumps([str(_part) for _part in key_parts])
     return base64.b85encode(
         hashlib.blake2b(bytes(_plain_key, encoding="utf")).digest()

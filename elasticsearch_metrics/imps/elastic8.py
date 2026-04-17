@@ -45,8 +45,7 @@ from elasticsearch_metrics.protocols import (
 from elasticsearch_metrics.util import timeseries_naming
 from elasticsearch_metrics.util.django import find_app_label_for_module
 from elasticsearch_metrics.util.timeparts import format_full_timeparts, format_timeparts
-from elasticsearch_metrics.util.unique_together import get_unique_id
-from elasticsearch_metrics.util.anon_enough import opaque_sessionhour_id
+from elasticsearch_metrics.util.anon_enough import opaque_key, opaque_sessionhour_id
 
 logger = logging.getLogger(__name__)
 
@@ -291,24 +290,23 @@ class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
         return _saved
 
     def _populate_unique_id(self) -> None:
-        _unique_id = self._get_unique_id()
-        assert _unique_id or not self.UNIQUE_TOGETHER_FIELDS
-        # make it unique by setting doc id in elasticsearch
-        if _unique_id:
-            self.meta.id = _unique_id
-
-    def _get_unique_id(self) -> str | None:
         """
-        Get a unique document id by hashing values of "unique together"
+        Set a unique document id by hashing values of "unique together"
         fields for "ON CONFLICT UPDATE" behavior -- if the document
         already exists, it will be replaced rather than duplicated.
         Cannot detect/avoid conflicts this way, but that's ok.
         """
-        if not self.UNIQUE_TOGETHER_FIELDS:
-            return None
-        return get_unique_id(
-            (getattr(self, _field_name) for _field_name in self.UNIQUE_TOGETHER_FIELDS)
-        )
+        _unique_together = self._get_unique_together_values()
+        assert _unique_together or not self.UNIQUE_TOGETHER_FIELDS
+        if _unique_together:
+            # make it unique by setting doc id in elasticsearch
+            self.meta.id = opaque_key(_unique_together)
+
+    def _get_unique_together_values(self) -> list:
+        return [
+            getattr(self, _field_name)
+            for _field_name in (self.UNIQUE_TOGETHER_FIELDS or ())
+        ]
 
 
 class _SimpleRecordMetaclass(_DjelmeRecordMetaclass):
