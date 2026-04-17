@@ -678,10 +678,10 @@ class CountedUsageRecord(EventRecord):
         sessionhour_id: str = "",
         # ...but when saving new data, give either the dirty identifying strings:
         user_id: str = "",
-        session_id: str = "",
+        client_session_id: str = "",
         request_host: str = "",
         request_useragent: str = "",
-        # ...or a django request to infer from
+        # ...or a django request to infer user/host/useragent from
         django_request: django.http.HttpRequest | None = None,
         # additional kwargs presumed to give field values
         **kwargs: typing.Any,
@@ -698,10 +698,11 @@ class CountedUsageRecord(EventRecord):
             else django_request.get_host()
         )
         _sessionhour_id = sessionhour_id or opaque_sessionhour_id(
-            client_session_id=session_id,
+            client_session_id=client_session_id,
             user_id=user_id,
-            request_host=_useragent,
-            request_useragent=_host,
+            request_host=_host,
+            request_useragent=_useragent,
+            timestamp=kwargs.get("timestamp"),
         )
         _new_record = super().record(**kwargs, sessionhour_id=_sessionhour_id)
         assert isinstance(_new_record, cls)
