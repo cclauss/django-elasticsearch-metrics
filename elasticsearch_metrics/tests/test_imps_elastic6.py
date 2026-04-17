@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 import datetime as dt
 
 from django.utils import timezone
@@ -197,7 +198,7 @@ class TestRecord(MockConnectionTestCase):
         assert p.timestamp == timestamp
         assert p.provider_id == "abc12"
 
-    @unittest.mock.patch.object(timezone, "now")
+    @mock.patch.object(timezone, "now")
     def test_defaults_timestamp_to_now(self, mock_now):
         fake_now = dt.datetime(2016, 8, 21)
         mock_now.return_value = fake_now
@@ -208,10 +209,10 @@ class TestRecord(MockConnectionTestCase):
 
 
 class TestSignals(MockConnectionTestCase):
-    @unittest.mock.patch.object(PreprintView, "get_timeseries_index_template")
+    @mock.patch.object(PreprintView, "get_timeseries_index_template")
     def test_create_metric_sends_signals(self, mock_get_index_template):
-        mock_pre_index_template_listener = unittest.mock.Mock()
-        mock_post_index_template_listener = unittest.mock.Mock()
+        mock_pre_index_template_listener = mock.Mock()
+        mock_post_index_template_listener = mock.Mock()
         signals.pre_index_template_create.connect(mock_pre_index_template_listener)
         signals.post_index_template_create.connect(mock_post_index_template_listener)
         PreprintView.sync_index_template()
@@ -226,8 +227,8 @@ class TestSignals(MockConnectionTestCase):
         assert "using" in post_call_kwargs
 
     def test_save_sends_signals(self):
-        mock_pre_save_listener = unittest.mock.Mock()
-        mock_post_save_listener = unittest.mock.Mock()
+        mock_pre_save_listener = mock.Mock()
+        mock_post_save_listener = mock.Mock()
         signals.pre_save.connect(mock_pre_save_listener, sender=PreprintView)
         signals.post_save.connect(mock_post_save_listener, sender=PreprintView)
 

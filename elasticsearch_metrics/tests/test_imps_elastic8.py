@@ -1,4 +1,4 @@
-import unittest
+from unittest import mock
 import datetime as dt
 
 import elasticsearch8
@@ -281,7 +281,7 @@ class TestRecord(MockConnectionTestCase):
 
     def test_defaults_timestamp_to_now(self):
         _fake_now = dt.datetime(2016, 8, 21, tzinfo=dt.timezone.utc)
-        with unittest.mock.patch(
+        with mock.patch(
             "elasticsearch_metrics.imps.elastic8.utcnow", return_value=_fake_now
         ):
             p = ThingHappened.record(thing_id="abc12")
@@ -291,8 +291,8 @@ class TestRecord(MockConnectionTestCase):
 
 class TestSignals(MockConnectionTestCase):
     def test_create_record_sends_signals(self):
-        mock_pre_index_template_listener = unittest.mock.Mock()
-        mock_post_index_template_listener = unittest.mock.Mock()
+        mock_pre_index_template_listener = mock.Mock()
+        mock_post_index_template_listener = mock.Mock()
         signals.pre_index_template_create.connect(mock_pre_index_template_listener)
         signals.post_index_template_create.connect(mock_post_index_template_listener)
         ThingHappened.sync_index_template()
@@ -307,8 +307,8 @@ class TestSignals(MockConnectionTestCase):
         assert "using" in post_call_kwargs
 
     def test_save_sends_signals(self):
-        mock_pre_save_listener = unittest.mock.Mock()
-        mock_post_save_listener = unittest.mock.Mock()
+        mock_pre_save_listener = mock.Mock()
+        mock_post_save_listener = mock.Mock()
         signals.pre_save.connect(mock_pre_save_listener, sender=ThingHappened)
         signals.post_save.connect(mock_post_save_listener, sender=ThingHappened)
 
@@ -386,7 +386,7 @@ class TestWithoutAutosetup(NoSetupRealElasticTestCase):
             _event.save()
 
     def test_cannot_save_with_wrong_template_pattern(self):
-        with unittest.mock.patch.object(
+        with mock.patch.object(
             Dummy8Event,
             "format_timeseries_index_pattern",
             return_value="wrong_pattern_haha_*",

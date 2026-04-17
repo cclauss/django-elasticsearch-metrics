@@ -1,7 +1,7 @@
 import contextlib
 from io import StringIO
 import types
-import unittest
+from unittest import mock
 import uuid
 
 from django.core.management import call_command
@@ -82,29 +82,27 @@ class MockConnectionTestCase(SimpleDjelmeTestCase):
     def setUp(self):
         super().setUp()
         clear_setup_check_caches()
-        self.mock_es6_connection = unittest.mock.Mock()
-        self.mock_es8_connection = unittest.mock.Mock()
+        self.mock_es6_connection = mock.Mock()
+        self.mock_es8_connection = mock.Mock()
         self.mock_es6_connection.index.return_value = {"result": "created"}
         self.mock_es8_connection.index.return_value = {"result": "created"}
         self.enterContext(
-            unittest.mock.patch(
+            mock.patch(
                 "elasticsearch_metrics.imps.elastic6.Document._get_connection",
                 return_value=self.mock_es6_connection,
             ),
         )
         self.enterContext(
-            unittest.mock.patch(
+            mock.patch(
                 "elasticsearch_metrics.imps.elastic8.esdsl.Document._get_connection",
                 return_value=self.mock_es8_connection,
             ),
         )
         self.mock_es6_require_been_setup = self.enterContext(
-            unittest.mock.patch(
-                "elasticsearch_metrics.imps.elastic6.Metric.require_been_setup"
-            ),
+            mock.patch("elasticsearch_metrics.imps.elastic6.Metric.require_been_setup"),
         )
         self.mock_es8_require_been_setup = self.enterContext(
-            unittest.mock.patch(
+            mock.patch(
                 "elasticsearch_metrics.imps.elastic8.BaseDjelmeRecord.require_been_setup"
             ),
         )
@@ -114,11 +112,11 @@ class MockConnectionTestCase(SimpleDjelmeTestCase):
 def prefixed_index_names(prefix: str = ""):
     _name_prefix = prefix or f"testrun{uuid.uuid4().hex}_"
     with (
-        unittest.mock.patch(
+        mock.patch(
             "elasticsearch_metrics.imps.elastic8.BaseDjelmeRecord.get_index_name_prefix",
             return_value=_name_prefix,
         ),
-        unittest.mock.patch(
+        mock.patch(
             "elasticsearch_metrics.imps.elastic6.BaseMetric.get_index_name_prefix",
             return_value=_name_prefix,
         ),
