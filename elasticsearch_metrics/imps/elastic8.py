@@ -253,13 +253,28 @@ class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
             return _backend._elastic8dsl_connection_name
         return super()._get_using(using)
 
+    def _get_index(self, index: str | None = None, required: bool = True) -> str | None:
+        """get the index name for this record
+
+        extend elasticsearch8.dsl's DocumentBase._get_index to default to djelme_index_name()
+        """
+        return super()._get_index(index or self.djelme_index_name(), required)
+
+    def clean(self) -> None:
+        """fill fields based on other fields, before saving
+
+        extend elasticsearch8.dsl's DocumentBase.clean to use the djelme index name
+
+        subclasses that need to autofill or transform fields should further extend this method
+        """
+        self._populate_unique_id()
+        super().clean()
+
     def save(
         self,
+        *,
         using: str | Elastic8Client | None = None,
         index: str | None = None,
-        validate: bool = True,
-        skip_empty: bool = True,
-        return_doc_meta: bool = False,
         **kwargs: typing.Any,
     ) -> typing.Any:
         """save the record
@@ -270,11 +285,8 @@ class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
         """
         assert not self.__class__.is_abstract
         self.require_been_setup(using=using)  # prevent automapped indexes
-        self._populate_unique_id()
         signals.pre_save.send(self.__class__, instance=self, using=using, index=index)
-        _saved = super().save(
-            using=using, index=index, validate=validate, skip_empty=skip_empty, **kwargs
-        )
+        _saved = super().save(using=using, index=index, **kwargs)
         signals.post_save.send(self.__class__, instance=self, using=using, index=index)
         return _saved
 
@@ -616,25 +628,13 @@ class TimeseriesRecord(BaseDjelmeRecord):
         )
         return "".join((self.get_index_name_prefix(), _index_name))
 
-    def save(
-        self,
-        using: str | Elastic8Client | None = None,
-        index: str | None = None,
-        validate: bool = True,
-        skip_empty: bool = True,
-        return_doc_meta: bool = False,
-        **kwargs: typing.Any,
-    ) -> typing.Any:
+    def clean(self) -> None:
         """save the record to a timeseries index
 
         extend `elasticsearch8.dsl.Document.save` to choose a specific timeseries index
         """
-        assert not self.__class__.is_abstract
+        super().clean()
         self.timeseries_timeparts = self.get_timeseries_timeparts()
-        if index is None:
-            index = self.djelme_index_name()
-        ret = super().save(using=using, index=index, **kwargs)
-        return ret
 
 
 # TODO: EventRecord expiration
