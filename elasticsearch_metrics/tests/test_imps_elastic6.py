@@ -19,7 +19,7 @@ from elasticsearch_metrics.exceptions import (
 )
 from elasticsearch_metrics.tests.util import (
     SimpleDjelmeTestCase,
-    MockSaveTestCase,
+    MockConnectionTestCase,
     RealElasticTestCase,
     NoSetupRealElasticTestCase,
 )
@@ -189,11 +189,11 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
         assert doc["_source"]["enabled"] is True
 
 
-class TestRecord(MockSaveTestCase):
-    def test_calls_save(self):
+class TestRecord(MockConnectionTestCase):
+    def test_calls_index(self):
         timestamp = dt.datetime(2017, 8, 21)
         p = PreprintView.record(timestamp=timestamp, provider_id="abc12")
-        assert self.mocked_es6_save.call_count == 1
+        assert self.mock_es6_connection.index.call_count == 1
         assert p.timestamp == timestamp
         assert p.provider_id == "abc12"
 
@@ -203,11 +203,11 @@ class TestRecord(MockSaveTestCase):
         mock_now.return_value = fake_now
 
         p = PreprintView.record(provider_id="abc12")
-        assert self.mocked_es6_save.call_count == 1
+        assert self.mock_es6_connection.index.call_count == 1
         assert p.timestamp == fake_now
 
 
-class TestSignals(MockSaveTestCase):
+class TestSignals(MockConnectionTestCase):
     @unittest.mock.patch.object(PreprintView, "get_timeseries_index_template")
     def test_create_metric_sends_signals(self, mock_get_index_template):
         mock_pre_index_template_listener = unittest.mock.Mock()

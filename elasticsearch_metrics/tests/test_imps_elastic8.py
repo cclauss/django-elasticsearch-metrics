@@ -16,7 +16,7 @@ from elasticsearch_metrics.exceptions import (
 from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.tests.util import (
     SimpleDjelmeTestCase,
-    MockSaveTestCase,
+    MockConnectionTestCase,
     RealElasticTestCase,
     NoSetupRealElasticTestCase,
 )
@@ -270,11 +270,11 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
         assert doc["_source"]["enabled"] is True
 
 
-class TestRecord(MockSaveTestCase):
+class TestRecord(MockConnectionTestCase):
     def test_calls_save(self):
         timestamp = dt.datetime(2017, 8, 21)
         p = ThingHappened.record(timestamp=timestamp, thing_id="abc12")
-        assert self.mocked_es8_save.call_count == 1
+        assert self.mock_es8_connection.index.call_count == 1
         assert p.timestamp == timestamp
         assert p.timeseries_timeparts == "2017.8.21.0.0.0"
         assert p.thing_id == "abc12"
@@ -285,13 +285,12 @@ class TestRecord(MockSaveTestCase):
             "elasticsearch_metrics.imps.elastic8.utcnow", return_value=_fake_now
         ):
             p = ThingHappened.record(thing_id="abc12")
-        assert self.mocked_es8_save.call_count == 1
+        assert self.mock_es8_connection.index.call_count == 1
         assert p.timestamp == _fake_now
 
 
-class TestSignals(MockSaveTestCase):
-    @unittest.mock.patch.object(ThingHappened, "get_timeseries_template")
-    def test_create_record_sends_signals(self, mock_timeseries_template):
+class TestSignals(MockConnectionTestCase):
+    def test_create_record_sends_signals(self):
         mock_pre_index_template_listener = unittest.mock.Mock()
         mock_post_index_template_listener = unittest.mock.Mock()
         signals.pre_index_template_create.connect(mock_pre_index_template_listener)
