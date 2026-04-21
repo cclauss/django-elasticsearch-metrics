@@ -94,18 +94,18 @@ UsageRecord.search_timeseries_range(datetime.date(2030, 1, 1), datetime.date(203
 
 By default, behind the scenes, a new elasticsearch index is created for each record type for each day
 in which a record is saved (using UTC timezone). You can change this for a record type by setting
-`Meta.timedepth`, or change the default timedepth with the setting `DJELME_DEFAULT_TIMEDEPTH` (see below).
+`Meta.timeseries_index_timedepth`, or change the default timedepth with the setting `DJELME_DEFAULT_TIMEDEPTH` (see below).
 
 ```python
 class MyEventWithMonthlyIndexes(EventRecord):
     class Meta:
-        timedepth = 2  # year and month
+        timeseries_index_timedepth = 2  # year and month
 ```
 
-- index per year: `timedepth = 1`
-- index per month: `timedepth = 2`
-- index per day: `timedepth = 3` (default)
-- index per hour: `timedepth = 4`
+- index per year: `timeseries_index_timedepth = 1`
+- index per month: `timeseries_index_timedepth = 2`
+- index per day: `timeseries_index_timedepth = 3` (default)
+- index per hour: `timeseries_index_timedepth = 4`
 
 
 ## Index settings
@@ -193,7 +193,7 @@ class UsageRecord(MyBaseMetric):
     DJELME_DEFAULT_TIMEDEPTH = 3  # daily indexes; YYYY.MM.DD (this is the default)
     DJELME_DEFAULT_TIMEDEPTH = 4  # hourly indexes; YYYY.MM.DD.HH
     ```
-    you can also set `Meta.timedepth` on a specific record type; this will take precedence
+    you can also set `Meta.timeseries_index_timedepth` on a specific record type; this will take precedence
 
 ## Management commands
 

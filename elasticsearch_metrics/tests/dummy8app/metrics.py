@@ -17,7 +17,7 @@ class Monthly8Event(djelme.EventRecord):
     class Meta:
         index_name_prefix = "dummy8evenz"
         timeseries_recordtype_name = "eventlog"
-        timedepth = 2
+        timeseries_index_timedepth = 2
 
 
 class ThingHappened(djelme.EventRecord):
@@ -33,7 +33,7 @@ class ThingHappened(djelme.EventRecord):
 
     class Meta:
         timeseries_recordtype_name = "happen"
-        timedepth = 1  # yearly timeseries indexes
+        timeseries_index_timedepth = 1  # yearly timeseries indexes
 
 
 class ThingHappeningsReport(djelme.CyclicRecord):
@@ -45,7 +45,7 @@ class ThingHappeningsReport(djelme.CyclicRecord):
 
     class Meta:
         index_name_prefix = "blarg_"
-        timedepth = 2  # monthly timeseries indexes
+        timeseries_index_timedepth = 2  # monthly timeseries indexes
 
 
 class SimpleKV(djelme.SimpleRecord):

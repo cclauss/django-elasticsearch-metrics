@@ -495,7 +495,7 @@ class TimeseriesRecord(BaseDjelmeRecord):
             app_label=cls.app_label,
             recordtype=cls.get_timeseries_recordtype_name(),
             timeparts=timeparts,
-            max_timedepth=cls.get_timedepth(),
+            max_timedepth=cls.get_timeseries_index_timedepth(),
         )
         return "".join((cls.get_index_name_prefix(), _pattern))
 
@@ -510,16 +510,18 @@ class TimeseriesRecord(BaseDjelmeRecord):
             cls.get_timeseries_recordtype_name(),
             from_when,
             until_when or utcnow(),
-            timedepth=cls.get_timedepth(),
+            timedepth=cls.get_timeseries_index_timedepth(),
         )
         return "".join((cls.get_index_name_prefix(), _pattern))
 
     @classmethod
-    def get_timedepth(cls) -> int:
+    def get_timeseries_index_timedepth(cls) -> int:
         _default_timedepth = getattr(
             settings, _DEFAULT_TIMEDEPTH_SETTING, _DEFAULT_TIMEDEPTH
         )
-        _timedepth = cls._get_meta_attr("timedepth", _default_timedepth)
+        _timedepth = cls._get_meta_attr(
+            "timeseries_index_timedepth", _default_timedepth
+        )
         assert isinstance(_timedepth, int)
         return _timedepth
 
@@ -622,7 +624,7 @@ class TimeseriesRecord(BaseDjelmeRecord):
             app_label=self.__class__.app_label,
             recordtype=self.get_timeseries_recordtype_name(),
             timeparts=self.timeseries_timeparts or self.get_timeseries_timeparts(),
-            max_timedepth=self.get_timedepth(),
+            max_timedepth=self.get_timeseries_index_timedepth(),
         )
         return "".join((self.get_index_name_prefix(), _index_name))
 
