@@ -63,6 +63,11 @@ def utcnow() -> datetime.datetime:
 
 # change default mapping for `str` annotations from Text to Keyword:
 esdsl.document_base.DocumentOptions.type_annotation_map[str] = (esdsl.Keyword, {})
+# change default timezone for `datetime` annotations from "local" to UTC:
+esdsl.document_base.DocumentOptions.type_annotation_map[datetime.datetime] = (
+    esdsl.Date,
+    {"default_timezone": "UTC"},
+)
 
 
 # changes to document metaclass behavior
@@ -310,25 +315,26 @@ class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
 
 
 class _SimpleRecordMetaclass(_DjelmeRecordMetaclass):
-    def __new__(mcls, name, bases, attrs):  # noqa: B902
-        """
-        extend _DjelmeRecordMetaclass.__new__ to set index name by app label and type name
-        """
-        _cls = super().__new__(mcls, name, bases, attrs)
-        if not _cls.is_abstract:
-            # set `_index._name`, if not already specified
-            _index_name = _cls._index._name
-            if not _index_name or (_index_name in ("*", "default")):
-                _app_label = find_app_label_for_module(attrs["__module__"])
-                _index_name = f"{_app_label.lower()}_{_cls.__name__.lower()}"
-            _prefix = _cls.get_index_name_prefix()
-            if not _index_name.startswith(_prefix):
-                _index_name = f"{_prefix}{_index_name}"
-            _cls._index._name = _index_name
-            # set `_index._using`, so `_index` can be used normally
-            _backend = djelme_registry.get_backend_for_recordtype(_cls)
-            _cls._index._using = _backend._elastic8dsl_connection_name
-        return _cls
+    @property
+    def _index(self):
+        if self.is_abstract:
+            return self.__index
+        # return a copy with `name` and `using` freshly computed
+        try:
+            _backend = djelme_registry.get_backend_for_recordtype(self)
+        except LookupError:
+            _using = None  # may not be registered yet, is ok
+        else:
+            _using = _backend._elastic8dsl_connection_name
+        return self.__index.clone(
+            name=self.djelme_index_name(),
+            using=_using,
+        )
+
+    @_index.setter
+    def _index(self, val):
+        # stash in a private attr so only the property getter can reach it
+        self.__index = val
 
 
 class SimpleRecord(BaseDjelmeRecord, metaclass=_SimpleRecordMetaclass):
@@ -342,7 +348,12 @@ class SimpleRecord(BaseDjelmeRecord, metaclass=_SimpleRecordMetaclass):
         for ProtoDjelmeRecord
         """
         assert not cls.is_abstract
-        return cls._index._name
+        _app_label = find_app_label_for_module(cls.__module__)
+        _index_name = f"{_app_label.lower()}_{cls.__name__.lower()}"
+        _prefix = cls.get_index_name_prefix()
+        if not _index_name.startswith(_prefix):
+            _index_name = f"{_prefix}{_index_name}"
+        return _index_name
 
     @classmethod
     def check_djelme_setup(cls, using: str | None = None) -> None:

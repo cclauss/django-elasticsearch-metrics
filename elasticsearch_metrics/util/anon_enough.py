@@ -47,13 +47,13 @@ def opaque_sessionhour_id(
     _today_str = _now.date().isoformat()
 
     # "A user session is defined any of the following ways: ..." (quotes out of order)
-    if client_session_id:
-        # "...by a logged user cookie + transaction date + hour of day..."
-        _session_id_parts = [client_session_id, _today_str, _now.hour]
-    elif user_id:
+    if user_id:
         # "...by a logged user ID (if users log in with personal accounts)
         #  + transaction date + hour of day (day is divided into 24 one-hour slices) ..."
         _session_id_parts = [user_id, _today_str, _now.hour]
+    elif client_session_id:
+        # "...by a logged user cookie + transaction date + hour of day..."
+        _session_id_parts = [client_session_id, _today_str, _now.hour]
     elif request_host and request_useragent:
         # "...or by a combination of IP address + user agent + transaction date + hour of day."
         _session_id_parts = [request_host, request_useragent, _today_str, _now.hour]
@@ -69,8 +69,10 @@ __test__ = {
 >>> _now_patcher.start() and None
 >>> opaque_sessionhour_id(client_session_id='foo')
 'R26L*vmd?|G}S5AZ}ONXq>^B*T-!TLCE`uboEXF-LpK8Hysi$nUve^2aG~PTWiX<6BDv}wQtowotKSdV'
->>> opaque_sessionhour_id(client_session_id='feh', user_id='blah')
-'JfeGFBfil1y$8fnmhi)8LU4}9vUBX6VfHmDPiVfiB~0nT&%3tKWsTTF_z2wynPj}`EF=}Y6=?}e5nDK0'
+>>> opaque_sessionhour_id(user_id='blah')
+'vToyLf@So{-(dZ*?<`d{f{|w+2j^OaNw{yYKEJ6}q4#288|8^lai=Hy@F-c?19rafSrA{mb&$z*p6AQ>'
+>>> opaque_sessionhour_id(user_id='blah', client_session_id='feh')
+'vToyLf@So{-(dZ*?<`d{f{|w+2j^OaNw{yYKEJ6}q4#288|8^lai=Hy@F-c?19rafSrA{mb&$z*p6AQ>'
 >>> opaque_sessionhour_id(request_host='999.999.999.999', request_useragent='hehe')
 'Q^-x^v~@WQRHrWsbbji+pNmz)1`sp3SywCJ4n`W_aoY0tfbL6byxqUpw#DXoqU3>DtZC*^D@qjc7EmO='
 >>> _now_patcher.stop() or None

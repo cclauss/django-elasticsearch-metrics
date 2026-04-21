@@ -65,6 +65,11 @@ class TestNamesAndPatterns(SimpleDjelmeTestCase):
             _thingreport.djelme_index_name(),
             "blarg_dummy8app_thinghappeningsreport_1999.3.",
         )
+        _kv = SimpleKV(key="wha", val=0)
+        self.assertEqual(
+            _kv.djelme_index_name(),
+            "dummy8app_simplekv",
+        )
 
     def test_format_index_name_respects_date_format_setting(self):
         _stamp = dt.datetime(2020, 2, 14)
@@ -272,7 +277,7 @@ class TestGetIndexTemplate(SimpleDjelmeTestCase):
 
 class TestRecord(MockConnectionTestCase):
     def test_calls_save(self):
-        timestamp = dt.datetime(2017, 8, 21)
+        timestamp = dt.datetime(2017, 8, 21, tzinfo=dt.timezone.utc)
         p = ThingHappened.record(timestamp=timestamp, thing_id="abc12")
         assert self.mock_es8_connection.index.call_count == 1
         assert p.timestamp == timestamp
@@ -706,13 +711,16 @@ class TestCyclicRecord(RealElasticTestCase):
 
 
 class TestSingleIndex(RealElasticTestCase):
-    def setUp(self):
-        super().setUp()
+    def test_index_name(self):
+        self.assertEqual(
+            _strip_test_prefix(SimpleKV._index._name),
+            "dummy8app_simplekv",
+        )
+
+    def test_search(self):
         SimpleKV.record(key="hello", val=2)
         SimpleKV.record(key="goodbye", val=-2)
         SimpleKV.refresh()
-
-    def test_search(self):
         (_hello,) = SimpleKV.search().query({"term": {"key": "hello"}}).execute()
         self.assertEqual(_hello.key, "hello")
         self.assertEqual(_hello.val, 2)
