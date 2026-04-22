@@ -26,7 +26,6 @@ import functools
 import logging
 import typing
 
-import django
 from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 from elasticsearch8.exceptions import NotFoundError
@@ -127,7 +126,7 @@ class _DjelmeRecordMetaclass(IndexMeta):
     @classmethod
     def construct_index(cls, opts, bases):
         """
-        Override IndexMeta.construct_index so a new Index is created for each class
+        Extend IndexMeta.construct_index so a new Index is created for each class
         and Index.settings, Index.analyzers, and Index.using are inherited
         (but not Index.name or Index.aliases)
         """
@@ -233,9 +232,19 @@ class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
 
     @classmethod
     def get_index_name_prefix(cls) -> str:
-        _name_prefix = cls._get_meta_attr("index_name_prefix") or ""
+        _name_prefix = (
+            cls._get_meta_attr("index_name_prefix")
+            or cls._get_djelme_backend().default_index_name_prefix
+            or ""
+        )
         assert isinstance(_name_prefix, str)
         return _name_prefix
+
+    @classmethod
+    def _get_djelme_backend(cls) -> "DjelmeElastic8Backend":
+        _backend = djelme_registry.get_backend_for_recordtype(cls)
+        assert isinstance(_backend, DjelmeElastic8Backend)
+        return _backend
 
     @classmethod
     def _get_using(
@@ -249,7 +258,7 @@ class BaseDjelmeRecord(esdsl.Document, metaclass=_DjelmeRecordMetaclass):
         """
         _backend: ProtoDjelmeBackend | None = None
         if using in (None, "default"):
-            _backend = djelme_registry.get_backend_for_recordtype(cls)
+            _backend = cls._get_djelme_backend()
         elif isinstance(using, str) and (using in djelme_registry.all_backends):
             _backend = djelme_registry.get_backend(using)
         if _backend is not None:
@@ -321,15 +330,14 @@ class _SimpleRecordMetaclass(_DjelmeRecordMetaclass):
             return self.__index
         # return a copy with `name` and `using` freshly computed
         try:
-            _backend = djelme_registry.get_backend_for_recordtype(self)
+            _backend = self._get_djelme_backend()
         except LookupError:
             _using = None  # may not be registered yet, is ok
+            _index_name = ""
         else:
             _using = _backend._elastic8dsl_connection_name
-        return self.__index.clone(
-            name=self.djelme_index_name(),
-            using=_using,
-        )
+            _index_name = self.djelme_index_name()
+        return self.__index.clone(name=_index_name, using=_using)
 
     @_index.setter
     def _index(self, val):
@@ -562,8 +570,6 @@ class TimeseriesRecord(BaseDjelmeRecord):
     def check_djelme_setup(cls, using: str | Elastic8Client | None = None) -> None:
         """Check if class is in sync with index template in Elasticsearch.
 
-        override `BaseDjelmeRecord.check_djelme_setup` to check for a template instead of an index
-
         :raise: IndexTemplateNotFoundError if index template does not exist.
         :raise: IndexTemplateOutOfSyncError if mappings, settings, or index patterns
             are out of sync.
@@ -687,32 +693,21 @@ class CountedUsageRecord(EventRecord):
         *,
         # each usage record needs a sessionhour_id -- for migrating old data, can set explicitly...
         sessionhour_id: str = "",
-        # ...but when saving new data, give either the dirty identifying strings:
+        # ...but when saving new data, give the dirty identifying strings
+        # (which won't be stored, but used to create an opaque sessionhour_id)
         user_id: str = "",
         client_session_id: str = "",
         request_host: str = "",
         request_useragent: str = "",
-        # ...or a django request to infer user/host/useragent from
-        django_request: django.http.HttpRequest | None = None,
         # additional kwargs presumed to give field values
         **kwargs: typing.Any,
     ) -> "typing.Self":  # typing.Self added in py 3.11 -- str annotation until 3.10 eol
         """CountedUsageRecord.record(...): construct and save a record"""
-        _useragent = (
-            request_useragent
-            if (request_useragent or (django_request is None))
-            else django_request.META.get("HTTP_USER_AGENT", "")
-        )
-        _host = (
-            request_host
-            if (request_host or (django_request is None))
-            else django_request.get_host()
-        )
         _sessionhour_id = sessionhour_id or opaque_sessionhour_id(
             client_session_id=client_session_id,
             user_id=user_id,
-            request_host=_host,
-            request_useragent=_useragent,
+            request_host=request_host,
+            request_useragent=request_useragent,
             timestamp=kwargs.get("timestamp"),
         )
         _new_record = super().record(**kwargs, sessionhour_id=_sessionhour_id)
@@ -762,6 +757,10 @@ class CyclicRecord(TimeseriesRecord):
 class DjelmeElastic8Backend:
     """DjelmeElastic8Backend: elastic8 backend for djelme (for use by generic djelme code)"""
 
+    _NON_PASSTHRU_KWARGS: typing.ClassVar[collections.abc.Collection[str]] = {
+        "djelme_default_index_name_prefix",
+    }
+
     backend_name: str
     imp_kwargs: dict[str, str]  # pass-thru to elasticsearch connection kwargs
 
@@ -770,6 +769,10 @@ class DjelmeElastic8Backend:
 
     def djelme_imp_kwargs(self) -> dict[str, str]:  # for ProtoDjelmeBackend
         return self.imp_kwargs
+
+    @property
+    def default_index_name_prefix(self) -> str:
+        return self.imp_kwargs.get("djelme_default_index_name_prefix", "")
 
     @property
     def elastic8_client(self) -> Elastic8Client:
@@ -782,7 +785,11 @@ class DjelmeElastic8Backend:
 
     @property
     def _elastic8dsl_connection_kwargs(self) -> dict[str, typing.Any]:
-        return self.imp_kwargs
+        return {
+            _key: _val
+            for _key, _val in self.imp_kwargs.items()
+            if _key not in self._NON_PASSTHRU_KWARGS
+        }
 
     def djelme_setup(self, recordtypes: collections.abc.Iterable[type]) -> None:
         # for ProtoDjelmeBackend
