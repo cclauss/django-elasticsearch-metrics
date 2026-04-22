@@ -45,7 +45,7 @@ def _run(*args: str, header: str = "") -> None:
         subprocess.run(args, check=True)  # stop on error
     except subprocess.CalledProcessError as _e:
         print(f"\n\n^^ errored ({_e.returncode}) ^^")
-        sys.exit()
+        sys.exit(1)
 
 
 def run_lint() -> None:
