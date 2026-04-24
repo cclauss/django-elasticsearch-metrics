@@ -775,7 +775,7 @@ class DjelmeElastic8Backend:
         return self.imp_kwargs.get("djelme_default_index_name_prefix", "")
 
     @property
-    def elastic8_client(self) -> Elastic8Client:
+    def elastic_client(self) -> Elastic8Client:
         # assumes `connections.configure` was already called
         return esdsl.connections.get_connection(self._elastic8dsl_connection_name)
 
@@ -802,7 +802,7 @@ class DjelmeElastic8Backend:
         # for ProtoDjelmeBackend
         for _recordtype in recordtypes:
             assert issubclass(_recordtype, BaseDjelmeRecord)
-            _recordtype.do_teardown(self.elastic8_client)
+            _recordtype.do_teardown(self.elastic_client)
 
 
 if __debug__ and typing.TYPE_CHECKING:

@@ -34,7 +34,7 @@ def _es8_client(
 ) -> elasticsearch8.Elasticsearch:
     _backend = djelme_registry.get_backend(backend_name)
     assert isinstance(_backend, djelme.DjelmeElastic8Backend)
-    return _backend.elastic8_client
+    return _backend.elastic_client
 
 
 class TestNamesAndPatterns(SimpleDjelmeTestCase):

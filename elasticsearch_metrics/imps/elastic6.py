@@ -356,7 +356,7 @@ class DjelmeElastic6Backend:
     imp_kwargs: dict[str, str]
 
     @property
-    def elastic6_client(self):
+    def elastic_client(self):
         # assumes `connections.configure` was already called
         return connections.get_connection(self.backend_name)
 
@@ -378,9 +378,10 @@ class DjelmeElastic6Backend:
             logger.info("tearing down %r", _metric_type)
             _indexname_wildcard = _metric_type._template_pattern
             _templatename = _metric_type._template_name
-            self.elastic6_client.indices.delete(index=_indexname_wildcard)
+            _client = self.elastic_client
+            _client.indices.delete(index=_indexname_wildcard)
             try:
-                self.elastic6_client.indices.delete_template(_templatename)
+                _client.indices.delete_template(_templatename)
             except NotFoundError:
                 pass
 
