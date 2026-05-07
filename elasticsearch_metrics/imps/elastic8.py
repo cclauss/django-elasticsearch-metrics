@@ -473,17 +473,24 @@ class TimeseriesRecord(BaseDjelmeRecord):
             yield _index_name, _index_info
 
     @classmethod
-    def do_teardown(cls, es8_client: Elastic8Client) -> None:
+    def do_teardown(
+        cls,
+        using: str | Elastic8Client | None = None,
+        *,
+        keep_templates: bool = False,
+    ) -> None:
         assert not cls.is_abstract
+        _client = cls._get_connection(using)
         _indexname_wildcard = cls.format_timeseries_index_pattern()
-        _indices = es8_client.indices.get(index=_indexname_wildcard, features=",")
+        _indices = _client.indices.get(index=_indexname_wildcard, features=",")
         for _index_name in _indices.keys():
-            es8_client.indices.delete(index=_index_name)
-        _templatename = cls.get_timeseries_template_name()
-        try:
-            es8_client.indices.delete_index_template(name=_templatename)
-        except NotFoundError:
-            pass
+            _client.indices.delete(index=_index_name)
+        if not keep_templates:
+            _templatename = cls.get_timeseries_template_name()
+            try:
+                _client.indices.delete_index_template(name=_templatename)
+            except NotFoundError:
+                pass
 
     @classmethod
     def get_timeseries_template(cls) -> esdsl.ComposableIndexTemplate:
