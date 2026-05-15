@@ -2,8 +2,8 @@ import unittest
 
 from django.core.management import CommandError
 
+from elasticsearch_metrics.imps import elastic8
 from elasticsearch_metrics.management.commands import djelme_backend_setup
-from elasticsearch_metrics.imps import elastic6
 from elasticsearch_metrics.registry import djelme_registry
 from elasticsearch_metrics.tests.util import SimpleDjelmeTestCase
 
@@ -13,9 +13,6 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
 
     def setUp(self):
         self.mock_inits = [
-            self.enterContext(
-                unittest.mock.patch("elasticsearch_metrics.imps.elastic6.Metric.init"),
-            ),
             self.enterContext(
                 unittest.mock.patch(
                     "elasticsearch_metrics.imps.elastic8.TimeseriesRecord.init"
@@ -40,7 +37,7 @@ class TestDjelmeSetup(SimpleDjelmeTestCase):
         assert "No recordtypes found for app 'notanapp'" in str(_raises.exception)
 
     def test_with_app_label(self):
-        class DummyMetric2(elastic6.Metric):
+        class DummyMetric2(elastic8.SimpleRecord):
             class Meta:
                 app_label = "dummyapp2"
 

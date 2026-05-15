@@ -1,4 +1,1 @@
-__all__ = (
-    "elastic6",
-    "elastic8",
-)
+__all__ = ("elastic8",)
